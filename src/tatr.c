@@ -148,7 +148,7 @@ void render_task_md(Task task, String_Builder *sb)
         if (sv_eq(property->key, SVLIT("TAGS"))) {
             sb_appendf(sb, "- TAGS:");
             bool first = true;
-            da_foreach(String_View, tag, &task.tags) {
+            da_foreach(String_View, tag, &task.parsed_tags) {
                 if (first) {
                     sb_appendf(sb, " ");
                 } else {
@@ -233,16 +233,16 @@ bool untag_run(Command *self, const char *program_name, int argc, char **argv)
         }
 
         bool updated = false;
-        for (size_t i = 0; i < task->tags.count; ) {
+        for (size_t i = 0; i < task->parsed_tags.count; ) {
             bool remove = false;
             for (size_t j = 0; !remove && j < tags_to_remove.count; ++j) {
-                if (sv_eq(task->tags.items[i], sv_from_cstr(tags_to_remove.items[j]))) {
+                if (sv_eq(task->parsed_tags.items[i], sv_from_cstr(tags_to_remove.items[j]))) {
                     remove = true;
                 }
             }
             if (remove) {
                 updated = true;
-                da_remove_unordered(&task->tags, i);
+                da_remove_unordered(&task->parsed_tags, i);
             } else {
                 i += 1;
             }
@@ -424,7 +424,7 @@ bool new_run(Command *self, const char *program_name, int argc, char **argv)
     };
 
     da_foreach(const char *, tag, &tags) {
-        parse_tags(&task.tags, sv_from_cstr(*tag));
+        parse_tags(&task.parsed_tags, sv_from_cstr(*tag));
     }
 
     String_Builder sb_md_content = {0};
@@ -744,10 +744,10 @@ bool summary_run(Command *self, const char *program_name, int argc, char **argv)
         bool task_is_closed = sv_eq(task->status, SVLIT("CLOSED"));
         if (closed == task_is_closed) {
             total_count += 1;
-            for (size_t j = 0; j < task->tags.count; ++j) {
-                *ht_find_or_put(&tags_count, task->tags.items[j]) += 1;
+            for (size_t j = 0; j < task->parsed_tags.count; ++j) {
+                *ht_find_or_put(&tags_count, task->parsed_tags.items[j]) += 1;
             }
-            if (task->tags.count == 0) {
+            if (task->parsed_tags.count == 0) {
                 untagged_count += 1;
             }
         }

@@ -19,16 +19,16 @@ typedef struct {
     String_View *items;
     size_t count;
     size_t capacity;
-} Tags;
+} Parsed_Tags;
 
-void parse_tags(Tags *tags, String_View sv);
-bool tags_contains(Tags tags, String_View tag);
+void parse_tags(Parsed_Tags *parsed_tags, String_View unparsed_tags);
+bool parsed_tags_contains(Parsed_Tags parsed_tags, String_View tag);
 
 typedef struct {
     char *id;
     String_View title;
     String_View status;
-    Tags tags;
+    Parsed_Tags parsed_tags;
     int priority;
     Properties properties;
     String_View body;

@@ -15,10 +15,10 @@
 #include "task.h"
 #include "ht.h"
 
-bool tags_contains(Tags tags, String_View tag)
+bool parsed_tags_contains(Parsed_Tags parsed_tags, String_View tag)
 {
-    for (size_t i = 0; i < tags.count; ++i) {
-        if (sv_eq(tags.items[i], tag)) return true;
+    for (size_t i = 0; i < parsed_tags.count; ++i) {
+        if (sv_eq(parsed_tags.items[i], tag)) return true;
     }
     return false;
 }
@@ -31,11 +31,11 @@ void append_task_md_content(String_Builder *sb, Task task)
     sb_appendf(sb, "- STATUS: "SV_Fmt"\n", SV_Arg(task.status));
     sb_appendf(sb, "- PRIORITY: %d\n", task.priority);
     sb_appendf(sb, "- TAGS:");
-    if (task.tags.count) {
+    if (task.parsed_tags.count) {
         sb_appendf(sb, " ");
-        for (size_t i = 0; i < task.tags.count; ++i) {
+        for (size_t i = 0; i < task.parsed_tags.count; ++i) {
             if (i > 0) sb_appendf(sb, ",");
-            sb_append_buf(sb, task.tags.items[i].data, task.tags.items[i].count);
+            sb_append_buf(sb, task.parsed_tags.items[i].data, task.parsed_tags.items[i].count);
         }
     }
     sb_appendf(sb, "\n");
@@ -48,11 +48,11 @@ void print_task_report(const char *rel_path, Task *task)
     printf("%s/%s/TASK.md:1:", rel_path, task->id); // Location
     printf(" "SV_Fmt, SV_Arg(task->status));        // Status
     printf(" [PRIORITY: %3d]", task->priority);     // Priority
-    if (task->tags.count) {                         // Tags
+    if (task->parsed_tags.count) {                  // Tags
         printf(" [");
-        for (size_t i = 0; i < task->tags.count; ++i) {
+        for (size_t i = 0; i < task->parsed_tags.count; ++i) {
             if (i > 0) printf(",");
-            printf(SV_Fmt, SV_Arg(task->tags.items[i]));
+            printf(SV_Fmt, SV_Arg(task->parsed_tags.items[i]));
         }
         printf("]");
     }
@@ -114,7 +114,7 @@ bool load_tasks(Tasks *tasks, const char *dir_path)
             // No tags by default
             tags_value = properties_put(&task.properties, SVLIT("TAGS"), SVLIT(""));
         }
-        parse_tags(&task.tags, *tags_value);
+        parse_tags(&task.parsed_tags, *tags_value);
 
         da_append(tasks, task);
     }
@@ -152,27 +152,27 @@ Task_Compare task_sorter(bool by_id)
 bool task_matches_tags(const Task *task, const char **tags, size_t tags_count)
 {
     for (size_t j = 0; j < tags_count; ++j) {
-        if (!tags_contains(task->tags, sv_from_cstr(tags[j]))) {
+        if (!parsed_tags_contains(task->parsed_tags, sv_from_cstr(tags[j]))) {
             return false;
         }
     }
     return true;
 }
 
-void parse_tags(Tags *tags, String_View sv)
+void parse_tags(Parsed_Tags *parsed_tags, String_View unparsed_tags)
 {
-    while (sv.count && (isspace(*sv.data) || *sv.data == ',')) {
-        sv_chop_left(&sv, 1);
+    while (unparsed_tags.count && (isspace(*unparsed_tags.data) || *unparsed_tags.data == ',')) {
+        sv_chop_left(&unparsed_tags, 1);
     }
-    while (sv.count > 0) {
-        const char *start = sv.data;
-        while (sv.count && !(isspace(*sv.data) || *sv.data == ',')) {
-            sv_chop_left(&sv, 1);
+    while (unparsed_tags.count > 0) {
+        const char *start = unparsed_tags.data;
+        while (unparsed_tags.count && !(isspace(*unparsed_tags.data) || *unparsed_tags.data == ',')) {
+            sv_chop_left(&unparsed_tags, 1);
         }
-        String_View tag = sv_from_parts(start, sv.data - start);
-        da_append(tags, tag);
-        while (sv.count && (isspace(*sv.data) || *sv.data == ',')) {
-            sv_chop_left(&sv, 1);
+        String_View tag = sv_from_parts(start, unparsed_tags.data - start);
+        da_append(parsed_tags, tag);
+        while (unparsed_tags.count && (isspace(*unparsed_tags.data) || *unparsed_tags.data == ',')) {
+            sv_chop_left(&unparsed_tags, 1);
         }
     }
 }

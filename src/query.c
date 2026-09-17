@@ -78,7 +78,7 @@ Task_Match_Result task_matches_query(String_View original_src, const Task *task,
             da_append(stack, stack_bool(op->src, true));
         } break;
         case OP_TAG: {
-            bool result = tags_contains(task->tags, op->as.tag);
+            bool result = parsed_tags_contains(task->parsed_tags, op->as.tag);
             da_append(stack, stack_bool(op->src, result));
         } break;
         case OP_NOT: {
@@ -104,7 +104,7 @@ Task_Match_Result task_matches_query(String_View original_src, const Task *task,
             da_append(stack, stack_bool(op->src, sv_eq(sv_from_cstr(task->id), op->as.id)));
         } break;
         case OP_TAGGED: {
-            da_append(stack, stack_bool(op->src, task->tags.count > 0));
+            da_append(stack, stack_bool(op->src, task->parsed_tags.count > 0));
         } break;
         case OP_PRIORITY: {
             da_append(stack, stack_int(op->src, task->priority));
