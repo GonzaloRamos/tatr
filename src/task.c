@@ -159,20 +159,24 @@ bool task_matches_tags(const Task *task, const char **tags, size_t tags_count)
     return true;
 }
 
+bool unparsed_tags_next(String_View *unparsed_tags, String_View *tag)
+{
+    while (unparsed_tags->count && (isspace(*unparsed_tags->data) || *unparsed_tags->data == ',')) {
+        sv_chop_left(unparsed_tags, 1);
+    }
+    if (unparsed_tags->count == 0) return false;
+    const char *start = unparsed_tags->data;
+    while (unparsed_tags->count && !(isspace(*unparsed_tags->data) || *unparsed_tags->data == ',')) {
+        sv_chop_left(unparsed_tags, 1);
+    }
+    *tag = sv_from_parts(start, unparsed_tags->data - start);
+    return true;
+}
+
 void parse_tags(Parsed_Tags *parsed_tags, String_View unparsed_tags)
 {
-    while (unparsed_tags.count && (isspace(*unparsed_tags.data) || *unparsed_tags.data == ',')) {
-        sv_chop_left(&unparsed_tags, 1);
-    }
-    while (unparsed_tags.count > 0) {
-        const char *start = unparsed_tags.data;
-        while (unparsed_tags.count && !(isspace(*unparsed_tags.data) || *unparsed_tags.data == ',')) {
-            sv_chop_left(&unparsed_tags, 1);
-        }
-        String_View tag = sv_from_parts(start, unparsed_tags.data - start);
+    String_View tag = {0};
+    while (unparsed_tags_next(&unparsed_tags, &tag)) {
         da_append(parsed_tags, tag);
-        while (unparsed_tags.count && (isspace(*unparsed_tags.data) || *unparsed_tags.data == ',')) {
-            sv_chop_left(&unparsed_tags, 1);
-        }
     }
 }

@@ -15,6 +15,8 @@
 #ifndef TASK_H_
 #define TASK_H_
 
+bool unparsed_tags_next(String_View *unparsed_tags, String_View *tag);
+
 typedef struct {
     String_View *items;
     size_t count;
