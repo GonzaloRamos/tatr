@@ -112,6 +112,6 @@ typedef enum {
     TMR_ERROR,
 } Task_Match_Result;
 
-Task_Match_Result task_matches_query(String_View original_src, const Task *task, Query query, Stack *stack);
+Task_Match_Result task_matches_query(String_View original_src, Task task, Query query, Stack *stack);
 
 #endif // QUERY_H_

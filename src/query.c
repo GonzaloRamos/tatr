@@ -69,7 +69,7 @@ bool pop_type(String_View original_src, Stack *stack, Type type, Stack_Item *ite
     return true;
 }
 
-Task_Match_Result task_matches_query(String_View original_src, const Task *task, Query query, Stack *stack)
+Task_Match_Result task_matches_query(String_View original_src, Task task, Query query, Stack *stack)
 {
     stack->count = 0;
     da_foreach(Op, op, &query) {
@@ -78,7 +78,8 @@ Task_Match_Result task_matches_query(String_View original_src, const Task *task,
             da_append(stack, stack_bool(op->src, true));
         } break;
         case OP_TAG: {
-            bool result = parsed_tags_contains(task->parsed_tags, op->as.tag);
+            String_View unparsed_tags = *properties_get(&task.properties, SVLIT("TAGS"));
+            bool result = unparsed_tags_contains(unparsed_tags, op->as.tag);
             da_append(stack, stack_bool(op->src, result));
         } break;
         case OP_NOT: {
@@ -101,13 +102,15 @@ Task_Match_Result task_matches_query(String_View original_src, const Task *task,
             da_append(stack, stack_bool(op->src, a.as.boolean && b.as.boolean));
         } break;
         case OP_ID: {
-            da_append(stack, stack_bool(op->src, sv_eq(sv_from_cstr(task->id), op->as.id)));
+            da_append(stack, stack_bool(op->src, sv_eq(sv_from_cstr(task.id), op->as.id)));
         } break;
         case OP_TAGGED: {
-            da_append(stack, stack_bool(op->src, task->parsed_tags.count > 0));
+            String_View unparsed_tags = *properties_get(&task.properties, SVLIT("TAGS"));
+            da_append(stack, stack_bool(op->src, !unparsed_tags_empty(unparsed_tags)));
         } break;
         case OP_PRIORITY: {
-            da_append(stack, stack_int(op->src, task->priority));
+            int priority = atoi(temp_sv_to_cstr(*properties_get(&task.properties, SVLIT("PRIORITY"))));
+            da_append(stack, stack_int(op->src, priority));
         } break;
         case OP_INTEGER: {
             da_append(stack, stack_int(op->src, op->as.integer));

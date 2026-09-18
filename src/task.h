@@ -16,6 +16,8 @@
 #define TASK_H_
 
 bool unparsed_tags_next(String_View *unparsed_tags, String_View *tag);
+bool unparsed_tags_contains(String_View unparsed_tags, String_View tag);
+bool unparsed_tags_empty(String_View unparsed_tags);
 
 typedef struct {
     String_View *items;
@@ -24,14 +26,12 @@ typedef struct {
 } Parsed_Tags;
 
 void parse_tags(Parsed_Tags *parsed_tags, String_View unparsed_tags);
+void unparse_tags(Parsed_Tags parsed_tags, String_Builder *unparsed_tags);
 bool parsed_tags_contains(Parsed_Tags parsed_tags, String_View tag);
 
 typedef struct {
     char *id;
     String_View title;
-    String_View status;
-    Parsed_Tags parsed_tags;
-    int priority;
     Properties properties;
     String_View body;
     String_View task_md_content;
@@ -39,6 +39,7 @@ typedef struct {
 
 void print_task_report(const char *rel_path, Task *task);
 void append_task_md_content(String_Builder *sb, Task task);
+void render_task_md(Task task, String_Builder *sb);
 
 typedef struct {
     Task *items;

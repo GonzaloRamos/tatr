@@ -24,6 +24,8 @@
 #include "task.h"
 #include "build.h"
 
+#include <inttypes.h>
+
 #define DEFAULT_TASK_TITLE "New Task"
 #define DEFAULT_PRIORITY 100
 
@@ -140,35 +142,6 @@ bool init_run(Command *self, const char *program_name, int argc, char **argv)
     return true;
 }
 
-void render_task_md(Task task, String_Builder *sb)
-{
-    sb_appendf(sb, "# "SV_Fmt"\n", SV_Arg(task.title));
-    sb_appendf(sb, "\n");
-    da_foreach(Property, property, &task.properties) {
-        if (sv_eq(property->key, SVLIT("TAGS"))) {
-            sb_appendf(sb, "- TAGS:");
-            bool first = true;
-            da_foreach(String_View, tag, &task.parsed_tags) {
-                if (first) {
-                    sb_appendf(sb, " ");
-                } else {
-                    sb_appendf(sb, ",");
-                }
-                sb_appendf(sb, SV_Fmt, SV_Arg(*tag));
-                first = false;
-            }
-            sb_appendf(sb, "\n");
-        } else if (sv_eq(property->key, SVLIT("STATUS"))) {
-            sb_appendf(sb, "- STATUS: "SV_Fmt"\n", SV_Arg(task.status));
-        } else if (sv_eq(property->key, SVLIT("PRIORITY"))) {
-            sb_appendf(sb, "- PRIORITY: %d\n", task.priority);
-        } else {
-            sb_appendf(sb, "- "SV_Fmt": "SV_Fmt"\n", SV_Arg(property->key), SV_Arg(property->value));
-        }
-    }
-    sb_appendf(sb, SV_Fmt, SV_Arg(task.body));
-}
-
 bool untag_run(Command *self, const char *program_name, int argc, char **argv)
 {
     String_Builder query_src = {0};
@@ -220,12 +193,13 @@ bool untag_run(Command *self, const char *program_name, int argc, char **argv)
 
     size_t tasks_updated = 0;
     da_foreach(Task, task, &tasks) {
+        String_View status = *properties_get(&task->properties, SVLIT("STATUS"));
         if (closed) {
-            if (!sv_eq(task->status, SVLIT("CLOSED"))) continue;
+            if (!sv_eq(status, SVLIT("CLOSED"))) continue;
         } else {
-            if (sv_eq(task->status, SVLIT("CLOSED"))) continue;
+            if (sv_eq(status, SVLIT("CLOSED"))) continue;
         }
-        switch (task_matches_query(original_src, task, query, &stack)) {
+        switch (task_matches_query(original_src, *task, query, &stack)) {
         case TMR_MATCHED:    break;
         case TMR_MISMATCHED: continue;
         case TMR_ERROR:      return false;
@@ -233,18 +207,20 @@ bool untag_run(Command *self, const char *program_name, int argc, char **argv)
         }
 
         bool updated = false;
-        for (size_t i = 0; i < task->parsed_tags.count; ) {
+        String_View unparsed_tags = *properties_get(&task->properties, SVLIT("TAGS"));
+        String_View tag = {0};
+        Parsed_Tags updated_tags = {0};
+        while (unparsed_tags_next(&unparsed_tags, &tag)) {
             bool remove = false;
             for (size_t j = 0; !remove && j < tags_to_remove.count; ++j) {
-                if (sv_eq(task->parsed_tags.items[i], sv_from_cstr(tags_to_remove.items[j]))) {
+                if (sv_eq(tag, sv_from_cstr(tags_to_remove.items[j]))) {
                     remove = true;
                 }
             }
             if (remove) {
                 updated = true;
-                da_remove_unordered(&task->parsed_tags, i);
             } else {
-                i += 1;
+                da_append(&updated_tags, tag);
             }
         }
 
@@ -343,12 +319,13 @@ bool ls_run(Command *self, const char *program_name, int argc, char **argv)
 
     size_t tasks_matched = 0;
     da_foreach(Task, task, &tasks) {
+        String_View status = *properties_get(&task->properties, SVLIT("STATUS"));
         if (closed) {
-            if (!sv_eq(task->status, SVLIT("CLOSED"))) continue;
+            if (!sv_eq(status, SVLIT("CLOSED"))) continue;
         } else {
-            if (sv_eq(task->status, SVLIT("CLOSED"))) continue;
+            if (sv_eq(status, SVLIT("CLOSED"))) continue;
         }
-        switch (task_matches_query(original_src, task, query, &stack)) {
+        switch (task_matches_query(original_src, *task, query, &stack)) {
         case TMR_MATCHED:    break;
         case TMR_MISMATCHED: continue;
         case TMR_ERROR:      return false;
@@ -368,13 +345,13 @@ bool ls_run(Command *self, const char *program_name, int argc, char **argv)
 
 bool new_run(Command *self, const char *program_name, int argc, char **argv)
 {
-    Flag_List tags = {0};
+    Flag_List tags_from_flags = {0};
     bool help = false;
     uint64_t priority = 0;
     char *suffix = NULL;
 
     void *c = flag_c_new(program_name);
-    flag_c_list_var(c, &tags, "t", "Tags to add to the new task");
+    flag_c_list_var(c, &tags_from_flags, "t", "Tags to add to the new task");
     flag_c_uint64_var(c, &priority, "p", DEFAULT_PRIORITY, "Priority of the new task");
     flag_c_str_var(c, &suffix, "s", NULL, "Task ID optional suffix");
     flag_c_bool_var(c, &help, "help", false, "Print this help message");
@@ -419,17 +396,25 @@ bool new_run(Command *self, const char *program_name, int argc, char **argv)
     Task task = {
         .id       = id,
         .title    = title,
-        .status   = SVLIT("OPEN"),
-        .priority = priority,
     };
+    properties_put(&task.properties, SVLIT("STATUS"), SVLIT("OPEN"));
+    properties_put(&task.properties, SVLIT("PRIORITY"), sv_from_cstr(temp_sprintf("%"PRIu64, priority)));
 
-    da_foreach(const char *, tag, &tags) {
-        parse_tags(&task.parsed_tags, sv_from_cstr(*tag));
+    Parsed_Tags parsed_tags = {0};
+    da_foreach(const char *, tags_cstr, &tags_from_flags) {
+        String_View unparsed_tags = sv_from_cstr(*tags_cstr);
+        String_View tag = {0};
+        while (unparsed_tags_next(&unparsed_tags, &tag)) {
+            da_append(&parsed_tags, tag);
+        }
     }
+    String_Builder unparsed_tags = {0};
+    unparse_tags(parsed_tags, &unparsed_tags);
+    properties_put(&task.properties, SVLIT("TAGS"), sb_to_sv(unparsed_tags));
 
     String_Builder sb_md_content = {0};
 
-    append_task_md_content(&sb_md_content, task);
+    render_task_md(task, &sb_md_content);
     const char *task_md_path = temp_sprintf("%s/%s/TASK.md", dir_path, id);
     if (!write_entire_file(task_md_path, sb_md_content.items, sb_md_content.count)) return false;
 
@@ -741,13 +726,18 @@ bool summary_run(Command *self, const char *program_name, int argc, char **argv)
     };
     for (size_t i = 0; i < tasks.count; ++i) {
         Task *task = &tasks.items[i];
-        bool task_is_closed = sv_eq(task->status, SVLIT("CLOSED"));
+        String_View status = *properties_get(&task->properties, SVLIT("STATUS"));
+        bool task_is_closed = sv_eq(status, SVLIT("CLOSED"));
         if (closed == task_is_closed) {
             total_count += 1;
-            for (size_t j = 0; j < task->parsed_tags.count; ++j) {
-                *ht_find_or_put(&tags_count, task->parsed_tags.items[j]) += 1;
+            String_View unparsed_tags = *properties_get(&task->properties, SVLIT("TAGS"));
+            String_View tag = {0};
+            bool untagged = true;
+            while (unparsed_tags_next(&unparsed_tags, &tag)) {
+                *ht_find_or_put(&tags_count, tag) += 1;
+                untagged = false;
             }
-            if (task->parsed_tags.count == 0) {
+            if (untagged) {
                 untagged_count += 1;
             }
         }
