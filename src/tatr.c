@@ -206,6 +206,9 @@ bool untag_run(Command *self, const char *program_name, int argc, char **argv)
         default:             UNREACHABLE("Task_Match_Result");
         }
 
+        String_Builder old_unparsed_tags = {0};
+        unparse_tags(task->parsed_tags, &old_unparsed_tags);
+
         bool updated = false;
         for (size_t i = 0; i < task->parsed_tags.count;) {
             String_View tag = task->parsed_tags.items[i];
@@ -224,12 +227,13 @@ bool untag_run(Command *self, const char *program_name, int argc, char **argv)
         }
 
         if (updated) {
-            String_Builder sb = {0};
-            render_task_md(*task, &sb);
-            // TASK(20260912-085629): `tatr-untag` must report each modification with a compiler style report pointing at the line where the `TAGS` property is located
-            if (!write_entire_file(temp_sprintf("%s/%s/TASK.md", dir_path, task->id), sb.items, sb.count)) {
-                return false;
-            }
+            String_Builder task_md_content = {0};
+            int tags_property_line = 0;
+            render_task_md(*task, &task_md_content, &tags_property_line);
+            const char *task_md_path = temp_sprintf("%s/%s/TASK.md", dir_path, task->id);
+            if (!write_entire_file(task_md_path, task_md_content.items, task_md_content.count)) return false;
+
+            print_task_tags_update_report(dir_path, tags_property_line, *task, sb_to_sv(old_unparsed_tags));
 
             tasks_updated += 1;
         }
@@ -413,7 +417,7 @@ bool new_run(Command *self, const char *program_name, int argc, char **argv)
 
     String_Builder sb_md_content = {0};
 
-    render_task_md(task, &sb_md_content);
+    render_task_md(task, &sb_md_content, NULL);
     const char *task_md_path = temp_sprintf("%s/%s/TASK.md", dir_path, id);
     if (!write_entire_file(task_md_path, sb_md_content.items, sb_md_content.count)) return false;
 

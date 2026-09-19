@@ -43,6 +43,20 @@ void print_task_report(const char *rel_path, Task *task)
     printf("\n");
 }
 
+void print_task_tags_update_report(const char *rel_path, int tags_property_line, Task task, String_View old_unparsed_tags)
+{
+    String_Builder new_unparsed_tags = {0};
+    unparse_tags(task.parsed_tags, &new_unparsed_tags);
+
+    printf("%s/%s/TASK.md:%d:", rel_path, task.id, tags_property_line);                            // Location
+    printf(" "SV_Fmt, SV_Arg(task.status));                                                        // Status
+    printf(" [PRIORITY: %3d]", task.priority);                                                     // Priority
+    printf(" [%"SV_Fmt2"] -> [%"SB_Fmt2"]", SV_Arg(old_unparsed_tags), SB_Arg(new_unparsed_tags)); // Tags
+    printf(" "SV_Fmt, SV_Arg(task.title));                                                         // Title
+    printf("\n");
+
+}
+
 bool load_tasks(Tasks *tasks, const char *dir_path)
 {
     bool result = true;
@@ -174,7 +188,7 @@ bool unparsed_tags_empty(String_View unparsed_tags)
     return true;
 }
 
-void render_task_md(Task task, String_Builder *sb)
+void render_task_md(Task task, String_Builder *sb, int *tags_property_line)
 {
     // The `Task.status`, `Task.priority`, and `Task.parsed_tags` have priority over whatever is in `Task.properties`.
     // But the corresponding properties must at least exist there because they define the order in the rendered `TASK.md`
@@ -183,14 +197,18 @@ void render_task_md(Task task, String_Builder *sb)
     assert(properties_get(&task.properties, SVLIT("TAGS")));
     assert(properties_get(&task.properties, SVLIT("PRIORITY")));
 
+    int line = 1;
     sb_appendf(sb, "# "SV_Fmt"\n", SV_Arg(task.title));
+    line += 1;
     sb_appendf(sb, "\n");
+    line += 1;
     da_foreach(Property, property, &task.properties) {
         if (sv_eq(property->key, SVLIT("STATUS"))) {
             sb_appendf(sb, "- STATUS: %"SV_Fmt2"\n", SV_Arg(task.status));
         } else if (sv_eq(property->key, SVLIT("PRIORITY"))) {
             sb_appendf(sb, "- PRIORITY: %d\n", task.priority);
         } else if (sv_eq(property->key, SVLIT("TAGS"))) {
+            *tags_property_line = line;
             sb_append_cstr(sb, "- TAGS:");
             if (task.parsed_tags.count) {
                 String_Builder unparsed_tags = {0};
@@ -201,6 +219,7 @@ void render_task_md(Task task, String_Builder *sb)
         } else {
             sb_appendf(sb, "- "SV_Fmt": "SV_Fmt"\n", SV_Arg(property->key), SV_Arg(property->value));
         }
+        line += 1;
     }
     sb_appendf(sb, SV_Fmt, SV_Arg(task.body));
 }

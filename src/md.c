@@ -14,7 +14,7 @@
 // with this program; if not, see <https://www.gnu.org/licenses/>.
 #include "md.h"
 
-// TASK(20260829-063210): get rid of Md struct and replace it with String_View
+// TASK(20260829-063210): get rid of `Md` struct and replace it with `String_View`
 typedef struct {
     char *source;
     size_t cur;
