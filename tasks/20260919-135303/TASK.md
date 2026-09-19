@@ -1,7 +1,7 @@
 # Record/replay testing
 
 - STATUS: OPEN
-- PRIORITY: 100
+- PRIORITY: 80
 - TAGS: scope
 
 Basically a test case should be a simple script that runs `tatr` commands. We record the state of a sandbox folder after the script and then replay the script and check if the state is expected.
