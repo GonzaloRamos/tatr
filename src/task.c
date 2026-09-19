@@ -25,13 +25,18 @@ bool parsed_tags_contains(Parsed_Tags parsed_tags, String_View tag)
 
 void print_task_report(const char *rel_path, Task *task)
 {
-    String_View status        = *properties_get(&task->properties, SVLIT("STATUS"));
-    String_View priority      = *properties_get(&task->properties, SVLIT("PRIORITY"));
-    String_View unparsed_tags = *properties_get(&task->properties, SVLIT("TAGS"));
-    printf("%s/%s/TASK.md:1:", rel_path, task->id);       // Location
-    printf(" "SV_Fmt, SV_Arg(status));                    // Status
-    printf(" [PRIORITY: %3"SV_Fmt2"]", SV_Arg(priority)); // Priority
-    if (!unparsed_tags_empty(unparsed_tags)) {            // Tags
+    String_View status        = task->status;
+    int priority              = task->priority;
+    Parsed_Tags parsed_tags   = task->parsed_tags;
+
+    String_Builder sb_unparsed_tags = {0};
+    unparse_tags(parsed_tags, &sb_unparsed_tags);
+    String_View unparsed_tags = sb_to_sv(sb_unparsed_tags);
+
+    printf("%s/%s/TASK.md:1:", rel_path, task->id); // Location
+    printf(" "SV_Fmt, SV_Arg(status));              // Status
+    printf(" [PRIORITY: %3d]", priority);           // Priority
+    if (!unparsed_tags_empty(unparsed_tags)) {      // Tags
         printf(" ["SV_Fmt"]", SV_Arg(unparsed_tags));
     }
     printf(" "SV_Fmt, SV_Arg(task->title));         // Title
@@ -69,12 +74,26 @@ bool load_tasks(Tasks *tasks, const char *dir_path)
         Task task = {
             .id = strdup(id),
             .task_md_content = sb_to_sv(sb_content),
+            .status = SVLIT("OPEN"), // Task is open until explicitly stated otherwise
+            .priority = 999999,      // Unset priority is super high so you don't forget to set it
         };
 
-        properties_put(&task.properties, SVLIT("STATUS"),   SVLIT("OPEN"));   // Task is open until explicitly stated otherwise
-        properties_put(&task.properties, SVLIT("PRIORITY"), SVLIT("999999")); // Unset priority is super high so you don't forget to set it
-        properties_put(&task.properties, SVLIT("TAGS"),     SVLIT(""));       // No tags by default
         task_md_parse(sb_content.items, &task.title, &task.properties, &task.body);
+
+        String_View *status = properties_get(&task.properties, SVLIT("STATUS"));
+        if (status) {
+            task.status = *status;
+        }
+
+        String_View *priority = properties_get(&task.properties, SVLIT("PRIORITY"));
+        if (priority) {
+            task.priority = atoi(temp_sv_to_cstr(*priority));
+        }
+
+        String_View *unparsed_tags = properties_get(&task.properties, SVLIT("TAGS"));
+        if (unparsed_tags) {
+            parse_tags(&task.parsed_tags, *unparsed_tags);
+        }
 
         da_append(tasks, task);
     }
@@ -93,12 +112,9 @@ int task_compare_id_reverse(const void *a, const void *b)
 
 int task_compare_priority_reverse(const void *a, const void *b)
 {
-    Task *ta = (void*)a;
-    Task *tb = (void*)b;
-    // TASK(20260918-192707): Task sorting by priority is doing a very stupid thing.
-    int priority_a = atoi(temp_sv_to_cstr(*properties_get(&ta->properties, SVLIT("PRIORITY"))));
-    int priority_b = atoi(temp_sv_to_cstr(*properties_get(&tb->properties, SVLIT("PRIORITY"))));
-    return priority_b - priority_a;
+    const Task *ta = a;
+    const Task *tb = b;
+    return tb->priority - ta->priority;
 }
 
 Task_Compare task_sorter(bool by_id)
@@ -160,10 +176,31 @@ bool unparsed_tags_empty(String_View unparsed_tags)
 
 void render_task_md(Task task, String_Builder *sb)
 {
+    // The `Task.status`, `Task.priority`, and `Task.parsed_tags` have priority over whatever is in `Task.properties`.
+    // But the corresponding properties must at least exist there because they define the order in the rendered `TASK.md`
+    // file.
+    assert(properties_get(&task.properties, SVLIT("STATUS")));
+    assert(properties_get(&task.properties, SVLIT("TAGS")));
+    assert(properties_get(&task.properties, SVLIT("PRIORITY")));
+
     sb_appendf(sb, "# "SV_Fmt"\n", SV_Arg(task.title));
     sb_appendf(sb, "\n");
     da_foreach(Property, property, &task.properties) {
-        sb_appendf(sb, "- "SV_Fmt": "SV_Fmt"\n", SV_Arg(property->key), SV_Arg(property->value));
+        if (sv_eq(property->key, SVLIT("STATUS"))) {
+            sb_appendf(sb, "- STATUS: %"SV_Fmt2"\n", SV_Arg(task.status));
+        } else if (sv_eq(property->key, SVLIT("PRIORITY"))) {
+            sb_appendf(sb, "- PRIORITY: %d\n", task.priority);
+        } else if (sv_eq(property->key, SVLIT("TAGS"))) {
+            sb_append_cstr(sb, "- TAGS:");
+            if (task.parsed_tags.count) {
+                String_Builder unparsed_tags = {0};
+                unparse_tags(task.parsed_tags, &unparsed_tags);
+                sb_appendf(sb, " %"SB_Fmt2, SB_Arg(unparsed_tags));
+            }
+            sb_append(sb, '\n');
+        } else {
+            sb_appendf(sb, "- "SV_Fmt": "SV_Fmt"\n", SV_Arg(property->key), SV_Arg(property->value));
+        }
     }
     sb_appendf(sb, SV_Fmt, SV_Arg(task.body));
 }

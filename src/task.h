@@ -32,6 +32,9 @@ bool parsed_tags_contains(Parsed_Tags parsed_tags, String_View tag);
 typedef struct {
     char *id;
     String_View title;
+    String_View status;
+    int priority;
+    Parsed_Tags parsed_tags;
     Properties properties;
     String_View body;
     String_View task_md_content;
