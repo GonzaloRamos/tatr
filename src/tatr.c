@@ -142,6 +142,100 @@ bool init_run(Command *self, const char *program_name, int argc, char **argv)
     return true;
 }
 
+bool tag_run(Command *self, const char *program_name, int argc, char **argv)
+{
+    String_Builder query_src = {0};
+    Flag_List tags_to_add = {0};
+    bool help = false;
+    bool closed = false;
+
+    void *c = flag_c_new(program_name);
+    flag_c_list_var(c, &tags_to_add, "t", "Tags to add to the tasks");
+    flag_c_bool_var(c, &closed, "c", false, "Process closed tasks");
+    flag_c_bool_var(c, &help, "help", false, "Print this help message");
+
+    if (!flag_c_parse(c, argc, argv)) {
+        print_command_usage(self, program_name, c);
+        flag_c_print_error(c, stderr);
+        return false;
+    }
+
+    argc = flag_c_rest_argc(c);
+    argv = flag_c_rest_argv(c);
+
+    if (help) {
+        print_command_usage(self, program_name, c);
+        return true;
+    }
+
+    if (argc <= 0) {
+        fprintf(stderr, "ERROR: no query is provided\n");
+        return false;
+    }
+
+    while (argc > 0) {
+        if (query_src.count > 0) sb_append(&query_src, ' ');
+        sb_append_cstr(&query_src, shift(argv, argc));
+    }
+
+    String_View src = sv_trim(sb_to_sv(query_src));
+    String_View original_src = src;
+    Query query = {0};
+    if (!compile_query(original_src, &src, &query)) return false;
+
+    char *dir_path = find_relative_tasks_directory();
+    if (!dir_path) return false;
+
+    Tasks tasks = {0};
+    if (!load_tasks(&tasks, dir_path)) return false;
+
+    Stack stack = {0};
+
+    size_t tasks_updated = 0;
+    da_foreach(Task, task, &tasks) {
+        String_View status = task->status;
+        if (closed) {
+            if (!sv_eq(status, SVLIT("CLOSED"))) continue;
+        } else {
+            if (sv_eq(status, SVLIT("CLOSED"))) continue;
+        }
+        switch (task_matches_query(original_src, *task, query, &stack)) {
+        case TMR_MATCHED:    break;
+        case TMR_MISMATCHED: continue;
+        case TMR_ERROR:      return false;
+        default:             UNREACHABLE("Task_Match_Result");
+        }
+
+        String_Builder old_unparsed_tags = {0};
+        unparse_tags(task->parsed_tags, &old_unparsed_tags);
+
+        bool updated = false;
+        for (size_t i = 0; i < tags_to_add.count; ++i) {
+            String_View tag = sv_from_cstr(tags_to_add.items[i]);
+            if (!parsed_tags_contains(task->parsed_tags, tag)) {
+                da_append(&task->parsed_tags, tag);
+                updated = true;
+            }
+        }
+
+        if (updated) {
+            String_Builder task_md_content = {0};
+            int tags_property_line = 0;
+            render_task_md(*task, &task_md_content, &tags_property_line);
+            const char *task_md_path = temp_sprintf("%s/%s/TASK.md", dir_path, task->id);
+            if (!write_entire_file(task_md_path, task_md_content.items, task_md_content.count)) return false;
+
+            print_task_tags_update_report(dir_path, tags_property_line, *task, sb_to_sv(old_unparsed_tags));
+
+            tasks_updated += 1;
+        }
+    }
+
+    nob_log(INFO, "%zu tasks updated", tasks_updated);
+
+    return true;
+}
+
 bool untag_run(Command *self, const char *program_name, int argc, char **argv)
 {
     String_Builder query_src = {0};
@@ -151,7 +245,7 @@ bool untag_run(Command *self, const char *program_name, int argc, char **argv)
 
     void *c = flag_c_new(program_name);
     flag_c_list_var(c, &tags_to_remove, "t", "Tags to remove from the tasks");
-    flag_c_bool_var(c, &closed, "c", false, "List closed tasks");
+    flag_c_bool_var(c, &closed, "c", false, "Process closed tasks");
     flag_c_bool_var(c, &help, "help", false, "Print this help message");
 
     if (!flag_c_parse(c, argc, argv)) {
@@ -850,9 +944,15 @@ Command commands[] = {
         .run = graph_run,
     },
     {
+        .name = "tag",
+        .description = "Tag all the tasks filtered by a query",
+        .signature = "[OPTIONS] <QUERY>",
+        .run = tag_run,
+    },
+    {
         .name = "untag",
         .description = "Untag all the tasks filtered by a query",
-        .signature = "[OPTIONS] [QUERY]",
+        .signature = "[OPTIONS] <QUERY>",
         .run = untag_run,
     },
     {
