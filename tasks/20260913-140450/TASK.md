@@ -1,8 +1,8 @@
 # Introduce `tatr-id` command
 
-- STATUS: OPEN
+- STATUS: CLOSED
 - PRIORITY: 100
-- TAGS: scope
+- TAGS:
 
 When executed inside of a task folder prints its id to stdout.
 

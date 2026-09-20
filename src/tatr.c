@@ -519,6 +519,27 @@ bool new_run(Command *self, const char *program_name, int argc, char **argv)
     return true;
 }
 
+bool id_run(Command *self, const char *program_name, int argc, char **argv)
+{
+    UNUSED(self);
+    UNUSED(program_name);
+    UNUSED(argc);
+    UNUSED(argv);
+    Path dir_path = {0};
+    Path cwd_path = {0};
+    Path rel_path = {0};
+    if (!find_tasks_database(&dir_path))  return false;
+    if (!get_current_dir_path(&cwd_path)) return false;
+    path_relative(&rel_path, cwd_path, dir_path);
+    if (!(rel_path.count == 1 && sv_eq(da_last(&rel_path), SVLIT("..")))) {
+        fprintf(stderr, "ERROR: You are not inside any task folder.\n");
+        return false;
+    }
+    const char *huid = temp_sv_to_cstr(da_last(&cwd_path));
+    printf("%s", huid);
+    return true;
+}
+
 bool find_run(Command *self, const char *program_name, int argc, char **argv)
 {
     bool help = false;
@@ -931,6 +952,11 @@ Command commands[] = {
         .signature = "<HUID> [OPTIONS]",
         .description = "Find the task with a given HUID",
         .run = find_run,
+    },
+    {
+        .name = "id",
+        .description = "Print the id of the current task folder to stdout",
+        .run = id_run,
     },
     {
         .name = "ref",
