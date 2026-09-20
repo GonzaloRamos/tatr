@@ -955,7 +955,7 @@ Command commands[] = {
     },
     {
         .name = "id",
-        .description = "Print the id of the current task folder to stdout",
+        .description = "Print the id of the current task folder to stdout. On Linux you can do something like `tatr id | xclip` with this.",
         .run = id_run,
     },
     {
