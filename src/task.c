@@ -208,7 +208,7 @@ void render_task_md(Task task, String_Builder *sb, int *tags_property_line)
         } else if (sv_eq(property->key, SVLIT("PRIORITY"))) {
             sb_appendf(sb, "- PRIORITY: %d\n", task.priority);
         } else if (sv_eq(property->key, SVLIT("TAGS"))) {
-            *tags_property_line = line;
+            if (tags_property_line) *tags_property_line = line;
             sb_append_cstr(sb, "- TAGS:");
             if (task.parsed_tags.count) {
                 String_Builder unparsed_tags = {0};

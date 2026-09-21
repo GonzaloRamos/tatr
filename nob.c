@@ -56,21 +56,17 @@ typedef struct {
     bool ok;
 } Test_Runner;
 
-bool run_query_payload(Test_Runner *r, const char *query_payload)
+bool test_runner_run(Test_Runner *r)
 {
     const char *test_stdout_path = BUILD_FOLDER"test_stdout.txt";
     const char *test_stderr_path = BUILD_FOLDER"test_stderr.txt";
-    cmd_append(&r->cmd, BUILD_FOLDER"tatr");
-    cmd_append(&r->cmd, "ls");
-    cmd_append(&r->cmd, "-debug");
-    cmd_append(&r->cmd, query_payload);
     Log_Handler *saved_log_handler = get_log_handler();
     set_log_handler(null_log_handler);
     {
         r->ok = cmd_run(
             &r->cmd,
             .stdout_path = test_stdout_path,
-            .stderr_path = test_stderr_path
+            .stderr_path = test_stderr_path,
         );
     }
     set_log_handler(saved_log_handler);
@@ -78,6 +74,16 @@ bool run_query_payload(Test_Runner *r, const char *query_payload)
     if (!read_entire_file(test_stdout_path, &r->sb_stdout)) return false;
     r->sb_stderr.count = 0;
     if (!read_entire_file(test_stderr_path, &r->sb_stderr)) return false;
+    return true;
+}
+
+bool run_query_payload(Test_Runner *r, const char *query_payload)
+{
+    cmd_append(&r->cmd, BUILD_FOLDER"tatr");
+    cmd_append(&r->cmd, "ls");
+    cmd_append(&r->cmd, "-debug");
+    cmd_append(&r->cmd, query_payload);
+    if (!test_runner_run(r)) return false;
     return true;
 }
 
@@ -267,39 +273,9 @@ void cc(Cmd *cmd, Compiler compiler)
     cmd_append(cmd, "-ggdb");
 }
 
-const char *get_current_date(void)
-{
-    static const char *WEEKDAYS[] = {
-        "Sun", "Mon", "Tue",
-        "Wed", "Thu", "Fri",
-        "Sat",
-    };
-
-    static const char *MONTHS[] = {
-        "Jan", "Feb", "Mar",
-        "Apr", "May", "Jun",
-        "Jul", "Aug", "Sep",
-        "Oct", "Nov", "Dec",
-    };
-
-    time_t rawtime;
-    time(&rawtime);
-    struct tm *timeinfo = localtime(&rawtime);
-
-    String_Builder sb = {0};
-    sb_appendf(&sb, "%s, ",  ARRAY_GET(WEEKDAYS, timeinfo->tm_wday));
-    sb_appendf(&sb, "%02d ", timeinfo->tm_mday);
-    sb_appendf(&sb, "%s ",   ARRAY_GET(MONTHS, timeinfo->tm_mon));
-    sb_appendf(&sb, "%04d ", timeinfo->tm_year+1900);
-    sb_appendf(&sb, "%02d:", timeinfo->tm_hour);
-    sb_appendf(&sb, "%02d:", timeinfo->tm_min);
-    sb_appendf(&sb, "%02d ", timeinfo->tm_sec);
-    sb_appendf(&sb, "%s",    timeinfo->tm_zone);
-    sb_append_null(&sb);
-    return sb.items;
-}
-
 bool make_build_h(Compiler compiler);
+const char *get_current_date(void);
+bool test_tatr_new_sanity(Cmd *cmd);
 
 int main(int argc, char **argv)
 {
@@ -367,6 +343,7 @@ int main(int argc, char **argv)
         if (!test_ls_query_not_stuck_to_open_paren(&r)) return 1;
         if (!test_ls_query_report_error_utf8(&r)) return 1;
         if (!test_ls_query_priority_above_20(&r)) return 1;
+        if (!test_tatr_new_sanity(&r.cmd)) return 1;
     }
 
     if (run) {
@@ -377,6 +354,30 @@ int main(int argc, char **argv)
     }
 
     return 0;
+}
+
+bool test_tatr_new_sanity(Cmd *cmd)
+{
+    bool result = true;
+    const char *saved_cwd = get_current_dir_temp();
+
+    if (file_exists(BUILD_FOLDER"test/")) {
+        if (!delete_directory_recursively(BUILD_FOLDER"test/")) return_defer(false);
+    }
+
+    if (!mkdir_if_not_exists(BUILD_FOLDER"test/")) return_defer(false);
+
+    set_current_dir(BUILD_FOLDER"test/");
+
+    cmd_append(cmd, "../tatr", "init");
+    if (!cmd_run(cmd)) return_defer(false);
+
+    cmd_append(cmd, "../tatr", "new");
+    if (!cmd_run(cmd)) return_defer(false);
+
+defer:
+    set_current_dir(saved_cwd);
+    return result;
 }
 
 bool make_build_h(Compiler compiler)
@@ -447,4 +448,36 @@ bool make_build_h(Compiler compiler)
     if (!write_entire_file(BUILD_FOLDER"build.h", sb_build_h.items, sb_build_h.count)) return false;
     nob_log(INFO, "Generated "BUILD_FOLDER"build.h");
     return true;
+}
+
+const char *get_current_date(void)
+{
+    static const char *WEEKDAYS[] = {
+        "Sun", "Mon", "Tue",
+        "Wed", "Thu", "Fri",
+        "Sat",
+    };
+
+    static const char *MONTHS[] = {
+        "Jan", "Feb", "Mar",
+        "Apr", "May", "Jun",
+        "Jul", "Aug", "Sep",
+        "Oct", "Nov", "Dec",
+    };
+
+    time_t rawtime;
+    time(&rawtime);
+    struct tm *timeinfo = localtime(&rawtime);
+
+    String_Builder sb = {0};
+    sb_appendf(&sb, "%s, ",  ARRAY_GET(WEEKDAYS, timeinfo->tm_wday));
+    sb_appendf(&sb, "%02d ", timeinfo->tm_mday);
+    sb_appendf(&sb, "%s ",   ARRAY_GET(MONTHS, timeinfo->tm_mon));
+    sb_appendf(&sb, "%04d ", timeinfo->tm_year+1900);
+    sb_appendf(&sb, "%02d:", timeinfo->tm_hour);
+    sb_appendf(&sb, "%02d:", timeinfo->tm_min);
+    sb_appendf(&sb, "%02d ", timeinfo->tm_sec);
+    sb_appendf(&sb, "%s",    timeinfo->tm_zone);
+    sb_append_null(&sb);
+    return sb.items;
 }
