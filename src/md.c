@@ -30,6 +30,8 @@ char md_char(Md *md)
     return md->source[md->cur];
 }
 
+// TODO: Test Task 4
+
 bool md_end(Md *md)
 {
     return md_char(md) == '\0';
