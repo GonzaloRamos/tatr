@@ -500,11 +500,9 @@ bool todo_run(Command *self, const char *program_name, int argc, char **argv)
 {
     char *id_suffix = NULL;
     bool help = false;
-    bool yes = false;
 
     void *c = flag_c_new(program_name);
     flag_c_str_var(c, &id_suffix, "s", NULL, "Task ID optional suffix");
-    flag_c_bool_var(c, &yes, "y", NULL, "Always answer \"yes\" on each TODO prompt");
     flag_c_bool_var(c, &help, "help", false, "Print this help message");
 
     if (!flag_c_parse(c, argc, argv)) {
@@ -556,7 +554,7 @@ bool todo_run(Command *self, const char *program_name, int argc, char **argv)
             String_View title  = sv_trim(suffix);
             printf("%s:%zu: Found a TODO: "SV_Fmt"\n", file_path, line_number, SV_Arg(title));
             // TASK(20261010-012147): `tatr-todo` prompt should accept more options
-            if (!yes && !yorn("Create a task from it?")) {
+            if (!yorn("Create a task from it?")) {
                 sb_append_sv(&sb_output, line);
                 sb_append(&sb_output, '\n');
                 continue;

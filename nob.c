@@ -390,14 +390,21 @@ bool test_tatr_todo_sanity(Cmd *cmd)
         return_defer(false);
     }
 
+    sb.count = 0;
+    sb_appendf(&sb, "y\n");
+    sb_appendf(&sb, "n\n");
+    sb_appendf(&sb, "y\n");
+    if (!write_entire_file("stdin.txt", sb.items, sb.count)) return_defer(false);
+
+    sb.count = 0;
     sb_appendf(&sb, "// TODO: task 1\n");
     sb_appendf(&sb, "/* TODO: task 2\n");
     sb_appendf(&sb, "*/\n");
     sb_appendf(&sb, "# TODO: task 3\n");
     if (!write_entire_file("todos", sb.items, sb.count)) return_defer(false);
 
-    cmd_append(cmd, "../tatr", "todo", "-y", "./todos");
-    if (!cmd_run(cmd, .stdout_path = "stdout.txt")) return_defer(false);
+    cmd_append(cmd, "../tatr", "todo", "./todos");
+    if (!cmd_run(cmd, .stdin_path = "stdin.txt", .stdout_path = "stdout.txt")) return_defer(false);
 
     cmd_append(cmd, "../tatr", "ls", "-id");
     if (!cmd_run(cmd, .stdout_path = "stdout.txt")) return_defer(false);
@@ -407,8 +414,8 @@ bool test_tatr_todo_sanity(Cmd *cmd)
     da_foreach(char, x, &sb) {
         if (*x == '\n') newlines += 1;
     }
-    if (newlines != 3) {
-        nob_log(ERROR, "Expected %d lines in stdout.txt but got %d", 3, newlines);
+    if (newlines != 2) {
+        nob_log(ERROR, "Expected %d lines in "BUILD_FOLDER"test/stdout.txt but got %d", 2, newlines);
         return_defer(false);
     }
 
