@@ -452,7 +452,7 @@ char *create_new_task(const char *dir_path, const char *id_suffix, String_View t
         id = temp_new_huid(id_suffix);
         task_path = temp_sprintf("%s/%s", dir_path, id);
         if (file_exists(task_path)) {
-            // We still hit an existing HUID even afte waiting for 1 second. 
+            // We still hit an existing HUID even afte waiting for 1 second.
             // Something is wrong with the environment. Better report an error.
             nob_log(ERROR, "%s already exists. You are probably creating tasks too fast, or your time is broken", id);
             return NULL;
@@ -498,15 +498,34 @@ bool yorn(const char *prompt)
 
 bool todo_run(Command *self, const char *program_name, int argc, char **argv)
 {
+    char *id_suffix = NULL;
+    bool help = false;
+    bool yes = false;
+
+    void *c = flag_c_new(program_name);
+    flag_c_str_var(c, &id_suffix, "s", NULL, "Task ID optional suffix");
+    flag_c_bool_var(c, &yes, "y", NULL, "Always answer \"yes\" on each TODO prompt");
+    flag_c_bool_var(c, &help, "help", false, "Print this help message");
+
+    if (!flag_c_parse(c, argc, argv)) {
+        print_command_usage(self, program_name, c);
+        flag_c_print_error(c, stderr);
+        return false;
+    }
+
+    argc = flag_c_rest_argc(c);
+    argv = flag_c_rest_argv(c);
+
+    if (help) {
+        print_command_usage(self, program_name, c);
+        return true;
+    }
+
     if (argc <= 0) {
-        void *c = NULL;
         print_command_usage(self, program_name, c);
         fprintf(stderr, "ERROR: no files were provided\n");
         return false;
     }
-
-    // TASK(20261010-012138): make the id suffix customizable in `tatr-todo` command.
-    const char *id_suffix = NULL;
 
     char *dir_path = find_relative_tasks_directory();
     if (!dir_path) return false;
@@ -537,7 +556,7 @@ bool todo_run(Command *self, const char *program_name, int argc, char **argv)
             String_View title  = sv_trim(suffix);
             printf("%s:%zu: Found a TODO: "SV_Fmt"\n", file_path, line_number, SV_Arg(title));
             // TASK(20261010-012147): `tatr-todo` prompt should accept more options
-            if (!yorn("Create a task from it?")) {
+            if (!yes && !yorn("Create a task from it?")) {
                 sb_append_sv(&sb_output, line);
                 sb_append(&sb_output, '\n');
                 continue;
