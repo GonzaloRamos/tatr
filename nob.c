@@ -276,6 +276,7 @@ void cc(Cmd *cmd, Compiler compiler)
 bool make_build_h(Compiler compiler);
 const char *get_current_date(void);
 bool test_tatr_new_sanity(Cmd *cmd);
+bool test_tatr_todo_sanity(Cmd *cmd);
 
 int main(int argc, char **argv)
 {
@@ -344,6 +345,7 @@ int main(int argc, char **argv)
         if (!test_ls_query_report_error_utf8(&r)) return 1;
         if (!test_ls_query_priority_above_20(&r)) return 1;
         if (!test_tatr_new_sanity(&r.cmd)) return 1;
+        if (!test_tatr_todo_sanity(&r.cmd)) return 1;
     }
 
     if (run) {
@@ -354,6 +356,66 @@ int main(int argc, char **argv)
     }
 
     return 0;
+}
+
+bool test_tatr_todo_sanity(Cmd *cmd)
+{
+    bool result = true;
+    const char *saved_cwd = get_current_dir_temp();
+    String_Builder sb = {0};
+    size_t newlines = 0;
+
+    if (file_exists(BUILD_FOLDER"test/")) {
+        if (!delete_directory_recursively(BUILD_FOLDER"test/")) return_defer(false);
+    }
+
+    if (!mkdir_if_not_exists(BUILD_FOLDER"test/")) return_defer(false);
+
+    set_current_dir(BUILD_FOLDER"test/");
+
+    cmd_append(cmd, "../tatr", "init");
+    if (!cmd_run(cmd, .stdout_path = "stdout.txt")) return_defer(false);
+
+    cmd_append(cmd, "../tatr", "ls", "-id");
+    if (!cmd_run(cmd, .stdout_path = "stdout.txt")) return_defer(false);
+
+    sb.count = 0;
+    if (!read_entire_file("stdout.txt", &sb)) return_defer(false);
+    newlines = 0;
+    da_foreach(char, x, &sb) {
+        if (*x == '\n') newlines += 1;
+    }
+    if (newlines != 1) {
+        nob_log(ERROR, "Expected %d lines in stdout.txt but got %d", 1, newlines);
+        return_defer(false);
+    }
+
+    sb_appendf(&sb, "// TODO: task 1\n");
+    sb_appendf(&sb, "/* TODO: task 2\n");
+    sb_appendf(&sb, "*/\n");
+    sb_appendf(&sb, "# TODO: task 3\n");
+    if (!write_entire_file("todos", sb.items, sb.count)) return_defer(false);
+
+    cmd_append(cmd, "../tatr", "todo", "-y", "./todos");
+    if (!cmd_run(cmd, .stdout_path = "stdout.txt")) return_defer(false);
+
+    cmd_append(cmd, "../tatr", "ls", "-id");
+    if (!cmd_run(cmd, .stdout_path = "stdout.txt")) return_defer(false);
+    sb.count = 0;
+    if (!read_entire_file("stdout.txt", &sb)) return_defer(false);
+    newlines = 0;
+    da_foreach(char, x, &sb) {
+        if (*x == '\n') newlines += 1;
+    }
+    if (newlines != 3) {
+        nob_log(ERROR, "Expected %d lines in stdout.txt but got %d", 3, newlines);
+        return_defer(false);
+    }
+
+defer:
+    set_current_dir(saved_cwd);
+    free(sb.items);
+    return result;
 }
 
 bool test_tatr_new_sanity(Cmd *cmd)
@@ -370,13 +432,13 @@ bool test_tatr_new_sanity(Cmd *cmd)
     set_current_dir(BUILD_FOLDER"test/");
 
     cmd_append(cmd, "../tatr", "init");
-    if (!cmd_run(cmd)) return_defer(false);
+    if (!cmd_run(cmd, .stdout_path = "stdout.txt")) return_defer(false);
 
     cmd_append(cmd, "../tatr", "new");
     cmd_append(cmd, "-p", "69");
     cmd_append(cmd, "-t", "foo,bar,baz");
     cmd_append(cmd, "Sanity check task");
-    if (!cmd_run(cmd)) return_defer(false);
+    if (!cmd_run(cmd, .stdout_path = "stdout.txt")) return_defer(false);
 
 defer:
     set_current_dir(saved_cwd);
