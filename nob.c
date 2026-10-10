@@ -373,6 +373,9 @@ bool test_tatr_new_sanity(Cmd *cmd)
     if (!cmd_run(cmd)) return_defer(false);
 
     cmd_append(cmd, "../tatr", "new");
+    cmd_append(cmd, "-p", "69");
+    cmd_append(cmd, "-t", "foo,bar,baz");
+    cmd_append(cmd, "Sanity check task");
     if (!cmd_run(cmd)) return_defer(false);
 
 defer:

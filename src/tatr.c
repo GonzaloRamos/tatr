@@ -99,8 +99,10 @@ void print_command_usage(Command *command, const char *program_name, void *c)
     } else {
         fprintf(stderr, "Usage: %s %s\n", program_name, command->name);
     }
-    fprintf(stderr, "OPTIONS:\n");
-    flag_c_print_options(c, stderr);
+    if (c) {
+        fprintf(stderr, "OPTIONS:\n");
+        flag_c_print_options(c, stderr);
+    }
 }
 
 bool init_run(Command *self, const char *program_name, int argc, char **argv)
@@ -440,17 +442,127 @@ bool ls_run(Command *self, const char *program_name, int argc, char **argv)
     return true;
 }
 
+char *create_new_task(const char *dir_path, const char *id_suffix, String_View title, int priority, Parsed_Tags parsed_tags)
+{
+    char *id = temp_new_huid(id_suffix);
+    char *task_path = temp_sprintf("%s/%s", dir_path, id);
+    if (file_exists(task_path)) {
+        // We hit an already existing HUID. Let's try to wait 1 second to acquire the next one.
+        sleep(1);
+        id = temp_new_huid(id_suffix);
+        task_path = temp_sprintf("%s/%s", dir_path, id);
+        if (file_exists(task_path)) {
+            // We still hit an existing HUID even afte waiting for 1 second. 
+            // Something is wrong with the environment. Better report an error.
+            nob_log(ERROR, "%s already exists. You are probably creating tasks too fast, or your time is broken", id);
+            return NULL;
+        }
+    }
+    if (!mkdir_if_not_exists(task_path)) return NULL;
+
+    Task task = {
+        .id          = id,
+        .title       = title,
+        .status      = SVLIT("OPEN"),
+        .priority    = priority,
+        .parsed_tags = parsed_tags
+    };
+
+    properties_put(&task.properties, SVLIT("STATUS"), SVNULL);
+    properties_put(&task.properties, SVLIT("PRIORITY"), SVNULL);
+    properties_put(&task.properties, SVLIT("TAGS"), SVNULL);
+
+    String_Builder sb_md_content = {0};
+
+    render_task_md(task, &sb_md_content, NULL);
+    const char *task_md_path = temp_sprintf("%s/%s/TASK.md", dir_path, id);
+    if (!write_entire_file(task_md_path, sb_md_content.items, sb_md_content.count)) return NULL;
+    print_task_report(dir_path, &task);
+    return id;
+}
+
+bool yorn(const char *prompt)
+{
+    char buffer[256];
+    for (;;) {
+        printf("%s [y/n] ", prompt);
+        fflush(stdout);
+        if (!fgets(buffer, sizeof(buffer), stdin)) return false;
+        for (char *it = buffer; *it; it += 1) *it = toupper(*it);
+        String_View response = sv_trim(sv_from_cstr(buffer));
+        if (response.count == 0) continue;
+        if (sv_eq(response, SVLIT("Y"))) return true;
+        return false;
+    }
+}
+
+bool todo_run(Command *self, const char *program_name, int argc, char **argv)
+{
+    if (argc <= 0) {
+        void *c = NULL;
+        print_command_usage(self, program_name, c);
+        fprintf(stderr, "ERROR: no files were provided\n");
+        return false;
+    }
+
+    // TASK(20261010-012138): make the id suffix customizable in `tatr-todo` command.
+    const char *id_suffix = NULL;
+
+    char *dir_path = find_relative_tasks_directory();
+    if (!dir_path) return false;
+
+    String_Builder sb_input = {0};
+    String_Builder sb_output = {0};
+
+    while (argc > 0) {
+        const char *file_path = shift(argv, argc);
+
+        sb_input.count = 0;
+        sb_output.count = 0;
+
+        if (!read_entire_file(file_path, &sb_input)) return false;
+
+        String_View input = sb_to_sv(sb_input);
+        String_View tag = SVLIT("TODO:");
+        for (size_t line_number = 1; input.count > 0; ++line_number) {
+            String_View line = sv_chop_by_delim(&input, '\n');
+            int todo_index = sv_find(line, tag);
+            if (todo_index < 0) {
+                sb_append_sv(&sb_output, line);
+                sb_append(&sb_output, '\n');
+                continue;
+            }
+            String_View prefix = sv_from_parts(line.data, todo_index);
+            String_View suffix = sv_from_parts(line.data + prefix.count + tag.count, line.count - prefix.count - tag.count);
+            String_View title  = sv_trim(suffix);
+            printf("%s:%zu: Found a TODO: "SV_Fmt"\n", file_path, line_number, SV_Arg(title));
+            // TASK(20261010-012147): `tatr-todo` prompt should accept more options
+            if (!yorn("Create a task from it?")) {
+                sb_append_sv(&sb_output, line);
+                sb_append(&sb_output, '\n');
+                continue;
+            }
+            Parsed_Tags parsed_tags = {0};
+            char *id = create_new_task(dir_path, id_suffix, title, DEFAULT_PRIORITY, parsed_tags);
+            if (id == NULL) return false;
+            sb_appendf(&sb_output, SV_Fmt "TASK(%s):" SV_Fmt "\n", SV_Arg(prefix), id, SV_Arg(suffix));
+        }
+        if (!write_entire_file(file_path, sb_output.items, sb_output.count)) return false;
+    }
+    return true;
+}
+
 bool new_run(Command *self, const char *program_name, int argc, char **argv)
 {
     Flag_List tags_from_flags = {0};
     bool help = false;
     uint64_t priority = 0;
-    char *suffix = NULL;
+    char *id_suffix = NULL;
 
     void *c = flag_c_new(program_name);
     flag_c_list_var(c, &tags_from_flags, "t", "Tags to add to the new task");
     flag_c_uint64_var(c, &priority, "p", DEFAULT_PRIORITY, "Priority of the new task");
-    flag_c_str_var(c, &suffix, "s", NULL, "Task ID optional suffix");
+    flag_c_str_var(c, &id_suffix, "s", NULL, "Task ID optional suffix");
     flag_c_bool_var(c, &help, "help", false, "Print this help message");
     String_Builder sb_title = {0};
 
@@ -476,46 +588,22 @@ bool new_run(Command *self, const char *program_name, int argc, char **argv)
     char *dir_path = find_relative_tasks_directory();
     if (!dir_path) return false;
 
-    char *id = temp_new_huid(suffix);
-    const char *task_path = temp_sprintf("%s/%s", dir_path, id);
-    int exists = file_exists(task_path);
-    if (exists < 0) return false;
-    if (exists) {
-        nob_log(ERROR, "%s already exists. You are probably creating tasks too fast, or your time is broken", id);
-        return false;
-    }
-    if (!mkdir_if_not_exists(task_path)) return false;
     String_View title = SVLIT(DEFAULT_TASK_TITLE);
     if (sb_title.count > 0) {
         title = sb_to_sv(sb_title);
     }
 
-    Task task = {
-        .id       = id,
-        .title    = title,
-        .status   = SVLIT("OPEN"),
-        .priority = priority,
-    };
-
+    Parsed_Tags parsed_tags = {0};
     da_foreach(const char *, tags_cstr, &tags_from_flags) {
         String_View unparsed_tags = sv_from_cstr(*tags_cstr);
         String_View tag = {0};
         while (unparsed_tags_next(&unparsed_tags, &tag)) {
-            da_append(&task.parsed_tags, tag);
+            da_append(&parsed_tags, tag);
         }
     }
 
-    properties_put(&task.properties, SVLIT("STATUS"), SVNULL);
-    properties_put(&task.properties, SVLIT("PRIORITY"), SVNULL);
-    properties_put(&task.properties, SVLIT("TAGS"), SVNULL);
+    if (!create_new_task(dir_path, id_suffix, title, priority, parsed_tags)) return false;
 
-    String_Builder sb_md_content = {0};
-
-    render_task_md(task, &sb_md_content, NULL);
-    const char *task_md_path = temp_sprintf("%s/%s/TASK.md", dir_path, id);
-    if (!write_entire_file(task_md_path, sb_md_content.items, sb_md_content.count)) return false;
-
-    print_task_report(dir_path, &task);
     return true;
 }
 
@@ -940,6 +1028,12 @@ Command commands[] = {
         .signature = "[OPTIONS] [TITLE...]",
         .description = "Create a new task",
         .run = new_run,
+    },
+    {
+        .name = "todo",
+        .signature = "[OPTIONS] <FILE...>",
+        .description = "Create tasks from all the TODOs in the provided files",
+        .run = todo_run,
     },
     {
         .name = "summary",
