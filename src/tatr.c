@@ -637,7 +637,7 @@ bool todo_run(Command *self, const char *program_name, int argc, char **argv)
                 return false;
             }
         }
-no_entire_file:
+no_entire_file: {}
     }
     return true;
 }
