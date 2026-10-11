@@ -563,7 +563,7 @@ bool todo_run(Command *self, const char *program_name, int argc, char **argv)
     String_Builder sb_output = {0};
     Lines lines = {0};
 
-    String_View tag = SVLIT("TODO:");
+    String_View tag = SVLIT("TO""DO:");
     size_t checkpoint = temp_save();
     while (argc > 0) {
         temp_rewind(checkpoint);
@@ -580,6 +580,7 @@ bool todo_run(Command *self, const char *program_name, int argc, char **argv)
             da_append(&lines, line);
         }
 
+        bool yes_entire_file = false;
         for (size_t i = 0; i < lines.count; ++i) {
             String_View line = lines.items[i];
             size_t line_number = i + 1;
@@ -590,7 +591,7 @@ bool todo_run(Command *self, const char *program_name, int argc, char **argv)
             String_View prefix = sv_from_parts(line.data, todo_index);
             String_View suffix = sv_from_parts(line.data + prefix.count + tag.count, line.count - prefix.count - tag.count);
             String_View title  = sv_trim(suffix);
-            printf("%s:%zu: Found a TODO: "SV_Fmt"\n", file_path, line_number, SV_Arg(title));
+            printf("%s:%zu: Found a TO""DO: "SV_Fmt"\n", file_path, line_number, SV_Arg(title));
             for (long j = (long)i - 2; j <= (long)i + 2; ++j) {
                 if (j < 0) continue;
                 if (j >= (long)lines.count) continue;
@@ -598,23 +599,29 @@ bool todo_run(Command *self, const char *program_name, int argc, char **argv)
                     if (use_color) {
                         printf(SV_Fmt "\033[1;31mTODO\033[0m:\033[36m" SV_Fmt "\033[0m\n", SV_Arg(prefix), SV_Arg(suffix));
                     } else {
-                        printf(SV_Fmt "TODO:" SV_Fmt "\n", SV_Arg(prefix), SV_Arg(suffix));
+                        printf(SV_Fmt "TO""DO:" SV_Fmt "\n", SV_Arg(prefix), SV_Arg(suffix));
                     }
                 } else {
                     printf(SV_Fmt"\n", SV_Arg(lines.items[j]));
                 }
             }
-            // TASK(20261010-012147): `tatr-todo` prompt should accept more options
-            static Prompt_Option options[] = {
-                { .c = 'y', .description = "yes"  },
-                { .c = 'n', .description = "no"   },
-                { .c = 'q', .description = "quit" },
-            };
-            switch (user_prompt("Create a task from it?", options, ARRAY_LEN(options))) {
-            case 'y': break;
-            case 'n': continue;
-            case 'q': return true;
-            default: UNREACHABLE("user_prompt");
+
+            if (!yes_entire_file) {
+                static Prompt_Option options[] = {
+                    { .c = 'y', .description = "yes"  },
+                    { .c = 'n', .description = "no"   },
+                    { .c = 'q', .description = "quit" },
+                    { .c = 'a', .description = "yes until the end of file" },
+                    { .c = 'c', .description = "no until the end of file" },
+                };
+                switch (user_prompt("Create a task from it?", options, ARRAY_LEN(options))) {
+                case 'y': break;
+                case 'n': continue;
+                case 'q': return true;
+                case 'a': yes_entire_file = true; break;
+                case 'c': goto no_entire_file;
+                default: UNREACHABLE("user_prompt");
+                }
             }
 
             Parsed_Tags parsed_tags = {0};
@@ -630,6 +637,7 @@ bool todo_run(Command *self, const char *program_name, int argc, char **argv)
                 return false;
             }
         }
+no_entire_file:
     }
     return true;
 }

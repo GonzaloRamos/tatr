@@ -1,13 +1,14 @@
 # `tatr-todo` prompt should accept more options
 
-- STATUS: OPEN
+- STATUS: CLOSED
 - PRIORITY: 100
-- TAGS: scope
+- TAGS:
 
 Introduced by TASK(20260919-171620)
 
 Similar to `git add -p`. Things like:
 - [x] `q` - quit the whole process.
-- [ ] `a` - accept everything for the entire file.
-- [ ] `c` - reject everything for the entire file (not sure if `c` is a good name though)
-- ...
+- [x] `a` - accept everything for the entire file.
+- [x] `c` - reject everything for the entire file (not sure if `c` is a good name though)
+
+That's it for now. More options will be separate tasks.
