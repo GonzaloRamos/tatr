@@ -2,7 +2,7 @@
 
 - STATUS: OPEN
 - PRIORITY: 80
-- TAGS: scope
+- TAGS:
 
 Basically a test case should be a simple script that runs `tatr` commands. We record the state of a sandbox folder after the script and then replay the script and check if the state is expected.
 
