@@ -534,6 +534,8 @@ bool todo_run(Command *self, const char *program_name, int argc, char **argv)
     flag_c_str_var(c, &id_suffix, "s", NULL, "Task ID optional suffix");
     flag_c_bool_var(c, &help, "help", false, "Print this help message");
 
+    bool use_color = isatty(STDOUT_FILENO);
+
     if (!flag_c_parse(c, argc, argv)) {
         print_command_usage(self, program_name, c);
         flag_c_print_error(c, stderr);
@@ -589,6 +591,19 @@ bool todo_run(Command *self, const char *program_name, int argc, char **argv)
             String_View suffix = sv_from_parts(line.data + prefix.count + tag.count, line.count - prefix.count - tag.count);
             String_View title  = sv_trim(suffix);
             printf("%s:%zu: Found a TODO: "SV_Fmt"\n", file_path, line_number, SV_Arg(title));
+            for (long j = (long)i - 2; j <= (long)i + 2; ++j) {
+                if (j < 0) continue;
+                if (j >= (long)lines.count) continue;
+                if (j == (long)i) {
+                    if (use_color) {
+                        printf(SV_Fmt "\033[1;31mTODO\033[0m:\033[36m" SV_Fmt "\033[0m\n", SV_Arg(prefix), SV_Arg(suffix));
+                    } else {
+                        printf(SV_Fmt "TODO:" SV_Fmt "\n", SV_Arg(prefix), SV_Arg(suffix));
+                    }
+                } else {
+                    printf(SV_Fmt"\n", SV_Arg(lines.items[j]));
+                }
+            }
             // TASK(20261010-012147): `tatr-todo` prompt should accept more options
             static Prompt_Option options[] = {
                 { .c = 'y', .description = "yes"  },

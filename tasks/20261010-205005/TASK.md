@@ -1,7 +1,7 @@
 # `tatr-todo` should show more context on each prompt
 
-- STATUS: OPEN
+- STATUS: CLOSED
 - PRIORITY: 100
-- TAGS: scope
+- TAGS:
 
 Show few surrounding lines around the TODO
