@@ -1,6 +1,6 @@
 # `tatr ls -debug` should be a separate command
 
-- TAGS: scope
+- TAGS:
 - PRIORITY: 90
 - STATUS: OPEN
 
