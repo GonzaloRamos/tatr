@@ -358,6 +358,69 @@ int main(int argc, char **argv)
     return 0;
 }
 
+void sv_quote(String_View sv, String_Builder *quoted_sb)
+{
+    da_foreach (const char, x, &sv) {
+        switch (*x) {
+        case '\n': sb_appendf(quoted_sb, "\\n");  break;
+        case '"':  sb_appendf(quoted_sb, "\\\""); break;
+        case '\\': sb_appendf(quoted_sb, "\\\\"); break;
+        default:   sb_append (quoted_sb, *x);     break;
+        }
+    }
+}
+
+size_t count_needles(String_View haystack, String_View needle)
+{
+    int index = sv_find(haystack, needle);
+    size_t count = 0;
+    while (index >= 0) {
+        count += 1;
+        haystack.data  += index + needle.count;
+        haystack.count -= index + needle.count;
+        index = sv_find(haystack, needle);
+    }
+    return count;
+}
+
+bool count_needles_in_file(const char *file_path, String_View needle, size_t *needle_count)
+{
+    bool result = true;
+    String_Builder sb = {0};
+    if (!read_entire_file(file_path, &sb)) return_defer(false);
+    *needle_count = count_needles(sb_to_sv(sb), needle);
+defer:
+    free(sb.items);
+    return result;
+}
+
+bool expect_needle_count_in_file(const char *file_loc, int line_loc, const char *file_path, String_View needle, size_t expected_needle_count)
+{
+    String_Builder sb = {0};
+    bool result = true;
+    size_t needle_count = 0;
+    if (!count_needles_in_file(file_path, needle, &needle_count)) return_defer(false);
+    if (needle_count != expected_needle_count) {
+        sv_quote(needle, &sb);
+        String_View quoted_needle = sb_to_sv(sb);
+        fprintf(stderr, "%s:%d: Expected %zu \""SV_Fmt"\" in %s but got %zu\n", file_loc, line_loc, expected_needle_count, SV_Arg(quoted_needle), file_path, needle_count);
+        return_defer(false);
+    }
+defer:
+    free(sb.items);
+    return result;
+}
+
+bool count_newlines_in_file(const char *file_path, size_t *newline_count)
+{
+    return count_needles_in_file(file_path, SVLIT("\n"), newline_count);
+}
+
+bool expect_newline_count_in_file(const char *file_loc, int line_loc, const char *file_path, size_t expected_newline_count)
+{
+    return expect_needle_count_in_file(file_loc, line_loc, file_path, SVLIT("\n"),  expected_newline_count);
+}
+
 bool test_tatr_todo_sanity(Cmd *cmd)
 {
     bool result = true;
@@ -378,17 +441,7 @@ bool test_tatr_todo_sanity(Cmd *cmd)
 
     cmd_append(cmd, "../tatr", "ls", "-id");
     if (!cmd_run(cmd, .stdout_path = "stdout.txt")) return_defer(false);
-
-    sb.count = 0;
-    if (!read_entire_file("stdout.txt", &sb)) return_defer(false);
-    newlines = 0;
-    da_foreach(char, x, &sb) {
-        if (*x == '\n') newlines += 1;
-    }
-    if (newlines != 1) {
-        nob_log(ERROR, "Expected %d lines in stdout.txt but got %d", 1, newlines);
-        return_defer(false);
-    }
+    if (!expect_newline_count_in_file(__FILE__, __LINE__, "stdout.txt", 1)) return_defer(false);
 
     sb.count = 0;
     sb_appendf(&sb, "y\n");
@@ -405,19 +458,13 @@ bool test_tatr_todo_sanity(Cmd *cmd)
 
     cmd_append(cmd, "../tatr", "todo", "./todos");
     if (!cmd_run(cmd, .stdin_path = "stdin.txt", .stdout_path = "stdout.txt")) return_defer(false);
+    if (!expect_needle_count_in_file(__FILE__, __LINE__, "./todos", SVLIT("\n"),   4)) return_defer(false);
+    if (!expect_needle_count_in_file(__FILE__, __LINE__, "./todos", SVLIT("TODO"), 1)) return_defer(false);
+    if (!expect_needle_count_in_file(__FILE__, __LINE__, "./todos", SVLIT("TASK"), 2)) return_defer(false);
 
     cmd_append(cmd, "../tatr", "ls", "-id");
     if (!cmd_run(cmd, .stdout_path = "stdout.txt")) return_defer(false);
-    sb.count = 0;
-    if (!read_entire_file("stdout.txt", &sb)) return_defer(false);
-    newlines = 0;
-    da_foreach(char, x, &sb) {
-        if (*x == '\n') newlines += 1;
-    }
-    if (newlines != 2) {
-        nob_log(ERROR, "Expected %d lines in "BUILD_FOLDER"test/stdout.txt but got %d", 2, newlines);
-        return_defer(false);
-    }
+    if (!expect_newline_count_in_file(__FILE__, __LINE__, "stdout.txt", 2)) return_defer(false);
 
 defer:
     set_current_dir(saved_cwd);

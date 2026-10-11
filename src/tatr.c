@@ -481,18 +481,47 @@ char *create_new_task(const char *dir_path, const char *id_suffix, String_View t
     return id;
 }
 
-bool yorn(const char *prompt)
+typedef struct {
+    char c;
+    const char *description;
+} Prompt_Option;
+
+char user_prompt(const char *prompt, Prompt_Option *options, size_t options_count)
 {
     char buffer[256];
     for (;;) {
-        printf("%s [y/n] ", prompt);
+        printf("%s [", prompt);
+        for (size_t i = 0; i < options_count; ++i) {
+            printf("%c,", options[i].c);
+        }
+        printf("?] ");
         fflush(stdout);
         if (!fgets(buffer, sizeof(buffer), stdin)) return false;
-        for (char *it = buffer; *it; it += 1) *it = toupper(*it);
+        for (char *it = buffer; *it; it += 1) *it = tolower(*it);
         String_View response = sv_trim(sv_from_cstr(buffer));
-        if (response.count == 0) continue;
-        if (sv_eq(response, SVLIT("Y"))) return true;
-        return false;
+        if (sv_eq(response, SVLIT("?"))) {
+            for (size_t i = 0; i < options_count; ++i) {
+                printf("%c - %s\n", options[i].c, options[i].description);
+            }
+            continue;
+        }
+        for (size_t i = 0; i < options_count; ++i) {
+            if (sv_eq(response, sv_from_parts(&options[i].c, 1))) return options[i].c;
+        }
+    }
+}
+
+typedef struct {
+    String_View *items;
+    size_t count;
+    size_t capacity;
+} Lines;
+
+void lines_concat(Lines lines, String_Builder *sb, String_View sep)
+{
+    da_foreach(String_View, line, &lines) {
+        sb_append_sv(sb, *line);
+        sb_append_sv(sb, sep);
     }
 }
 
@@ -530,23 +559,30 @@ bool todo_run(Command *self, const char *program_name, int argc, char **argv)
 
     String_Builder sb_input = {0};
     String_Builder sb_output = {0};
+    Lines lines = {0};
 
+    String_View tag = SVLIT("TODO:");
+    size_t checkpoint = temp_save();
     while (argc > 0) {
+        temp_rewind(checkpoint);
+
         const char *file_path = shift(argv, argc);
 
         sb_input.count = 0;
-        sb_output.count = 0;
-
         if (!read_entire_file(file_path, &sb_input)) return false;
 
+        lines.count = 0;
         String_View input = sb_to_sv(sb_input);
-        String_View tag = SVLIT("TODO:");
-        for (size_t line_number = 1; input.count > 0; ++line_number) {
+        while (input.count > 0) {
             String_View line = sv_chop_by_delim(&input, '\n');
+            da_append(&lines, line);
+        }
+
+        for (size_t i = 0; i < lines.count; ++i) {
+            String_View line = lines.items[i];
+            size_t line_number = i + 1;
             int todo_index = sv_find(line, tag);
             if (todo_index < 0) {
-                sb_append_sv(&sb_output, line);
-                sb_append(&sb_output, '\n');
                 continue;
             }
             String_View prefix = sv_from_parts(line.data, todo_index);
@@ -554,17 +590,31 @@ bool todo_run(Command *self, const char *program_name, int argc, char **argv)
             String_View title  = sv_trim(suffix);
             printf("%s:%zu: Found a TODO: "SV_Fmt"\n", file_path, line_number, SV_Arg(title));
             // TASK(20261010-012147): `tatr-todo` prompt should accept more options
-            if (!yorn("Create a task from it?")) {
-                sb_append_sv(&sb_output, line);
-                sb_append(&sb_output, '\n');
-                continue;
+            static Prompt_Option options[] = {
+                { .c = 'y', .description = "yes"  },
+                { .c = 'n', .description = "no"   },
+                { .c = 'q', .description = "quit" },
+            };
+            switch (user_prompt("Create a task from it?", options, ARRAY_LEN(options))) {
+            case 'y': break;
+            case 'n': continue;
+            case 'q': return true;
+            default: UNREACHABLE("user_prompt");
             }
+
             Parsed_Tags parsed_tags = {0};
             char *id = create_new_task(dir_path, id_suffix, title, DEFAULT_PRIORITY, parsed_tags);
-            if (id == NULL) return false;
-            sb_appendf(&sb_output, SV_Fmt "TASK(%s):" SV_Fmt "\n", SV_Arg(prefix), id, SV_Arg(suffix));
+            if (id == NULL) {
+                return false;
+            }
+            lines.items[i] = sv_from_cstr(temp_sprintf(SV_Fmt "TASK(%s):" SV_Fmt, SV_Arg(prefix), id, SV_Arg(suffix)));
+
+            sb_output.count = 0;
+            lines_concat(lines, &sb_output, SVLIT("\n"));
+            if (!write_entire_file(file_path, sb_output.items, sb_output.count)) {
+                return false;
+            }
         }
-        if (!write_entire_file(file_path, sb_output.items, sb_output.count)) return false;
     }
     return true;
 }
