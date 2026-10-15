@@ -117,10 +117,12 @@ bool expect_success(Test_Runner *r)
     return true;
 }
 
-bool assert_test_output(const char *output_label, String_View expected_stdout, String_View actual_stdout)
+#define assert_test_output(output_label, expected_stdout, actual_stdout) \
+    assert_test_output_loc(__FILE__, __LINE__, output_label, expected_stdout, actual_stdout)
+bool assert_test_output_loc(const char *file_loc, int line_loc, const char *output_label, String_View expected_stdout, String_View actual_stdout)
 {
     if (!sv_eq(expected_stdout, actual_stdout)) {
-        nob_log(ERROR, "UNEXPECTED %s !!!", output_label);
+        nob_log(ERROR, "%s:%d: UNEXPECTED %s !!!", file_loc, line_loc, output_label);
         nob_log(ERROR, "EXPECTED:");
         fprintf(stderr, SV_Fmt"\n", SV_Arg(expected_stdout));
         nob_log(ERROR, "ACTUAL:");
@@ -138,7 +140,7 @@ bool test_ls_query_negation_of_complex_expression_in_parens(Test_Runner *r)
     if (!assert_test_output(
         "STDOUT",
         sv_from_cstr(
-            "TOKENS:\n"
+            "QUERY TOKENS:\n"
             "    not\n"
             "    [\n"
             "    tagged\n"
@@ -152,7 +154,7 @@ bool test_ls_query_negation_of_complex_expression_in_parens(Test_Runner *r)
             "    :bar\n"
             "    ]\n"
             "\n"
-            "OPS:\n"
+            "QUERY OPS:\n"
             "    OP_TAGGED\n"
             "    OP_TAG bug\n"
             "    OP_TAG test\n"
@@ -177,7 +179,7 @@ bool test_ls_query_not_stuck_to_open_paren(Test_Runner *r)
     if (!assert_test_output(
         "STDOUT",
         sv_from_cstr(
-            "TOKENS:\n"
+            "QUERY TOKENS:\n"
             "    not\n"
             "    [\n"
             "    :bug\n"
@@ -187,7 +189,7 @@ bool test_ls_query_not_stuck_to_open_paren(Test_Runner *r)
             "    and\n"
             "    :query\n"
             "\n"
-            "OPS:\n"
+            "QUERY OPS:\n"
             "    OP_TAG bug\n"
             "    OP_TAG test\n"
             "    OP_AND\n"
@@ -231,12 +233,12 @@ bool test_ls_query_priority_above_20(Test_Runner *r)
     if (!assert_test_output(
         "STDOUT",
         SVLIT(
-            "TOKENS:\n"
+            "QUERY TOKENS:\n"
             "    priority\n"
             "    gt\n"
             "    20\n"
             "\n"
-            "OPS:\n"
+            "QUERY OPS:\n"
             "    OP_PRIORITY\n"
             "    OP_INTEGER 20\n"
             "    OP_GT\n"),

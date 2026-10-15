@@ -187,6 +187,27 @@ Since brackets have a special meaning in TQL, if you have any tags that contain 
 | `<a> eq <b>` | True when `<a>` is equal to `<b>`.|
 | `<a> ne <b>` | True when `<a>` is not equal to `<b>`.|
 
+## Tatr Update Language
+
+Comma-separated list of actions to apply to a list of tasks filtered by `tatr-ls`.
+
+For example:
+
+```
+$ tatr ls -update 'close,-scope' :bug
+```
+
+Above command closes all the tasks with tag `bug` and removes the `scope` tag from them if they had any.
+
+### Reference
+
+|Action|Description|
+|-|-|
+|`+tag`| Add tag to the task |
+|`-tag`| Remove tag from the task |
+|`close`| Close the task |
+|`open`| Open the task |
+
 ## The License
 
 All the code in this repo is released under [GNU General Public License, version 2](https://www.gnu.org/licenses/old-licenses/gpl-2.0.html) license unless stated otherwise (specifically, the files in [./thirdparty/](./thirdparty/) folder have their own corresponding licenses)

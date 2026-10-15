@@ -14,8 +14,6 @@
 // with this program; if not, see <https://www.gnu.org/licenses/>.
 #include "query.h"
 
-void report_compile_query_diagnostic(String_View original_src, String_View src, const char *format, ...) NOB_PRINTF_FORMAT(3, 4);
-
 int is_bracket(int x)
 {
     if (x == '[') return true;
@@ -28,13 +26,20 @@ int is_not_bracket_nor_space(int x)
     return !is_bracket(x) && !isspace(x);
 }
 
-String_View chop_next_query_token(String_View *src)
+bool chop_next_query_token(String_View *src, String_View *token)
 {
     *src = sv_trim_left(*src);
-    if (src->count == 0) return *src;
-    if (sv_starts_with(*src, SVLIT("["))) return sv_chop_left(src, 1);
-    if (sv_starts_with(*src, SVLIT("]"))) return sv_chop_left(src, 1);
-    return sv_chop_while(src, is_not_bracket_nor_space);
+    if (src->count == 0) return false;
+    if (sv_starts_with(*src, SVLIT("["))) {
+        *token = sv_chop_left(src, 1);
+        return true;
+    }
+    if (sv_starts_with(*src, SVLIT("]"))) {
+        *token = sv_chop_left(src, 1);
+        return true;
+    }
+    *token = sv_chop_while(src, is_not_bracket_nor_space);
+    return token->count > 0;
 }
 
 void print_op(Op op)
@@ -187,7 +192,8 @@ bool compile_query_expr(String_View original_src, String_View *src, Query *query
 
 bool compile_query_primary(String_View original_src, String_View *src, Query *query)
 {
-    String_View token = chop_next_query_token(src);
+    String_View token = {0};
+    chop_next_query_token(src, &token);
 
     // We used to use dot to refer to a tag before. We still accept it for backward compatibility.
     // But we may remove it at some point in the future.
@@ -207,7 +213,7 @@ bool compile_query_primary(String_View original_src, String_View *src, Query *qu
     if (sv_eq(token, SVLIT("["))) {
         char start = *token.data;
         if (!compile_query_expr(original_src, src, query)) return false;
-        token = chop_next_query_token(src);
+        chop_next_query_token(src, &token);
         if (start == '[' && !sv_eq(token, SVLIT("]"))) {
             report_compile_query_diagnostic(original_src, token, "ERROR: Expected `]`.");
             return false;
@@ -277,7 +283,8 @@ bool compile_query_compare(String_View original_src, String_View *src, Query *qu
     if (!compile_query_primary(original_src, src, query)) return false;
     for (;;) {
         String_View saved_src = *src;
-        String_View token = chop_next_query_token(src);
+        String_View token = {0};
+        chop_next_query_token(src, &token);
         if (sv_eq(token, SVLIT("lt"))) {
             if (!compile_query_primary(original_src, src, query)) return false;
             da_append(query, op_lt(token));
@@ -320,7 +327,8 @@ bool compile_query_and(String_View original_src, String_View *src, Query *query)
     if (!compile_query_compare(original_src, src, query)) return false;
     for (;;) {
         String_View saved_src = *src;
-        String_View token = chop_next_query_token(src);
+        String_View token = {0};
+        chop_next_query_token(src, &token);
         if (!sv_eq(token, sv_from_cstr("and"))) {
             *src = saved_src;
             return true;
@@ -337,7 +345,8 @@ bool compile_query_or(String_View original_src, String_View *src, Query *query)
     if (!compile_query_and(original_src, src, query)) return false;
     for (;;) {
         String_View saved_src = *src;
-        String_View token = chop_next_query_token(src);
+        String_View token = {0};
+        chop_next_query_token(src, &token);
         if (!sv_eq(token, sv_from_cstr("or"))) {
             *src = saved_src;
             return true;
@@ -357,8 +366,8 @@ bool compile_query_expr(String_View original_src, String_View *src, Query *query
 bool compile_query(String_View original_src, String_View *src, Query *query)
 {
     if (!compile_query_expr(original_src, src, query)) return false;
-    String_View end = chop_next_query_token(src);
-    if (end.count != 0) {
+    String_View end = {0};
+    if (chop_next_query_token(src, &end)) {
         fprintf(stderr, "Supported infix operators:\n");
         fprintf(stderr, "\n");
         fprintf(stderr, "    and  or                  - logical operators\n");

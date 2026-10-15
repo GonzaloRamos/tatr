@@ -21,6 +21,7 @@
 #include "huid.h"
 #include "md.h"
 #include "query.h"
+#include "update.h"
 #include "task.h"
 #include "build.h"
 
@@ -347,12 +348,13 @@ bool ls_run(Command *self, const char *program_name, int argc, char **argv)
     bool help = false;
     bool debug = false;
     bool by_id = false;
-    String_Builder query_src = {0};
+    Flag_List updates_from_flags = {0};
 
     void *c = flag_c_new(program_name);
     flag_c_bool_var(c, &closed, "c", false, "List closed tasks");
     flag_c_bool_var(c, &ascending, "a", false, "List tasks in ascending order");
     flag_c_bool_var(c, &by_id, "id", false, "Sort tasks by id");
+    flag_c_list_var(c, &updates_from_flags, "update", "Apply update operations on the resulting list");
     flag_c_bool_var(c, &debug, "debug", false, "Output opcodes of the query for debug purpose");
     flag_c_bool_var(c, &help, "help", false, "Print this help message");
 
@@ -365,38 +367,75 @@ bool ls_run(Command *self, const char *program_name, int argc, char **argv)
     argc = flag_c_rest_argc(c);
     argv = flag_c_rest_argv(c);
 
-    while (argc > 0) {
-        if (query_src.count > 0) sb_append(&query_src, ' ');
-        sb_append_cstr(&query_src, shift(argv, argc));
-    }
-
     if (help) {
         print_command_usage(self, program_name, c);
         return true;
     }
 
-    String_View src = sv_trim(sb_to_sv(query_src));
-    if (src.count == 0) src = sv_from_cstr("any");
-    String_View original_src = src;
+    bool query_is_empty = false;
+
+    // Compiling query
+    String_Builder sb_query_src = {0};
+    while (argc > 0) {
+        if (sb_query_src.count > 0) sb_append(&sb_query_src, ' ');
+        sb_append_cstr(&sb_query_src, shift(argv, argc));
+    }
+    String_View query_src = sv_trim(sb_to_sv(sb_query_src));
+    if (query_src.count == 0) {
+        query_src = sv_from_cstr("any");
+        query_is_empty = true;
+    }
+    String_View original_query_src = query_src;
     Query query = {0};
-    if (!compile_query(original_src, &src, &query)) return false;
+    if (!compile_query(original_query_src, &query_src, &query)) return false;
+
+    // Compiling update
+    String_Builder sb_updates_src = {0};
+    da_foreach(const char *, updates_cstr, &updates_from_flags) {
+        sb_append_cstr(&sb_updates_src, *updates_cstr);
+        sb_append(&sb_updates_src, ' ');
+    }
+    String_View update_src = sv_trim(sb_to_sv(sb_updates_src));
+    String_View original_update_src = update_src;
+    Update update = {0};
+    if (!compile_update(original_update_src, &update_src, &update)) return false;
 
     // TASK(20260910-181239): `tatr ls -debug` should be a separate command
     if (debug) {
-        printf("TOKENS:\n");
-        src = sv_trim(sb_to_sv(query_src));
-        for (;;) {
-            String_View token = chop_next_query_token(&src);
-            if (token.count == 0) break;
+        printf("QUERY TOKENS:\n");
+        query_src = sv_trim(sb_to_sv(sb_query_src));
+        String_View token = {0};
+        while (chop_next_query_token(&query_src, &token)) {
             printf("    "SV_Fmt"\n", SV_Arg(token));
         }
         printf("\n");
-        printf("OPS:\n");
+        printf("QUERY OPS:\n");
         da_foreach(Op, op, &query) {
             printf("    ");
             print_op(*op);
         }
+        if (update.count) {
+            printf("\n");
+            printf("UPDATE TOKENS:\n");
+            query_src = sv_trim(sb_to_sv(sb_updates_src));
+            String_View token = {0};
+            while (chop_next_update_token(&query_src, &token)) {
+                printf("    "SV_Fmt"\n", SV_Arg(token));
+            }
+            printf("\n");
+            printf("UPDATE OPS:\n");
+            da_foreach(UOp, op, &update) {
+                printf("    ");
+                print_uop(*op);
+            }
+        }
         return true;
+    }
+
+    if (update.count > 0 && query_is_empty) {
+        fprintf(stderr, "ERROR: -%s with empty query is not allowed!\n", flag_c_name(c, &updates_from_flags));
+        fprintf(stderr, "NOTE: if you do want to update all the tasks use \"any\" query\n");
+        return false;
     }
 
     char *dir_path = find_relative_tasks_directory();
@@ -417,6 +456,7 @@ bool ls_run(Command *self, const char *program_name, int argc, char **argv)
     Stack stack = {0};
 
     size_t tasks_matched = 0;
+    size_t tasks_updated = 0;
     da_foreach(Task, task, &tasks) {
         String_View status = task->status;
         if (closed) {
@@ -424,18 +464,35 @@ bool ls_run(Command *self, const char *program_name, int argc, char **argv)
         } else {
             if (sv_eq(status, SVLIT("CLOSED"))) continue;
         }
-        switch (task_matches_query(original_src, *task, query, &stack)) {
+        switch (task_matches_query(original_query_src, *task, query, &stack)) {
         case TMR_MATCHED:    break;
         case TMR_MISMATCHED: continue;
         case TMR_ERROR:      return false;
         default:             UNREACHABLE("Task_Match_Result");
         }
-        print_task_report(dir_path, task);
+
+        if (update_task(task, update)) {
+            String_View update_src = sv_trim(sb_to_sv(sb_updates_src));
+            String_Builder task_md_content = {0};
+            render_task_md(*task, &task_md_content, NULL);
+            const char *task_md_path = temp_sprintf("%s/%s/TASK.md", dir_path, task->id);
+            if (!write_entire_file(task_md_path, task_md_content.items, task_md_content.count)) return false;
+            print_task_report(dir_path, task, update_src);
+            tasks_updated += 1;
+        } else {
+            print_task_report(dir_path, task, SVNULL);
+        }
+
         tasks_matched += 1;
     }
 
     if (tasks_matched == 0) {
         printf("No tasks were found\n");
+        return true;
+    }
+
+    if (tasks_updated > 0) {
+        printf("%zu tasks where updated\n", tasks_updated);
         return true;
     }
 
@@ -477,7 +534,7 @@ char *create_new_task(const char *dir_path, const char *id_suffix, String_View t
     render_task_md(task, &sb_md_content, NULL);
     const char *task_md_path = temp_sprintf("%s/%s/TASK.md", dir_path, id);
     if (!write_entire_file(task_md_path, sb_md_content.items, sb_md_content.count)) return NULL;
-    print_task_report(dir_path, &task);
+    print_task_report(dir_path, &task, SVNULL);
     return id;
 }
 
@@ -778,7 +835,7 @@ bool find_run(Command *self, const char *program_name, int argc, char **argv)
             if (path_only) {
                 printf("%s/%s/TASK.md\n", dir_path, task->id);
             } else {
-                print_task_report(dir_path, task);
+                print_task_report(dir_path, task, SVNULL);
             }
             found = true;
         }
@@ -1241,6 +1298,7 @@ int main(int argc, char **argv)
 #include "huid.c"
 #include "md.c"
 #include "query.c"
+#include "update.c"
 #include "task.c"
 
 #define NOB_IMPLEMENTATION

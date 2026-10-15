@@ -23,7 +23,7 @@ bool parsed_tags_contains(Parsed_Tags parsed_tags, String_View tag)
     return false;
 }
 
-void print_task_report(const char *rel_path, Task *task)
+void print_task_report(const char *rel_path, Task *task, String_View updated)
 {
     String_View status        = task->status;
     int priority              = task->priority;
@@ -34,6 +34,9 @@ void print_task_report(const char *rel_path, Task *task)
     String_View unparsed_tags = sb_to_sv(sb_unparsed_tags);
 
     printf("%s/%s/TASK.md:1:", rel_path, task->id); // Location
+    if (updated.count) {
+        printf(" <UPDATED: "SV_Fmt">", SV_Arg(updated));
+    }
     printf(" "SV_Fmt, SV_Arg(status));              // Status
     printf(" [PRIORITY: %3d]", priority);           // Priority
     if (!unparsed_tags_empty(unparsed_tags)) {      // Tags
@@ -147,7 +150,10 @@ bool unparsed_tags_next(String_View *unparsed_tags, String_View *tag)
     while (unparsed_tags->count && (isspace(*unparsed_tags->data) || *unparsed_tags->data == ',')) {
         sv_chop_left(unparsed_tags, 1);
     }
-    if (unparsed_tags->count == 0) return false;
+    if (unparsed_tags->count == 0) {
+        *tag = sv_from_parts(unparsed_tags->data, 0);
+        return false;
+    }
     const char *start = unparsed_tags->data;
     while (unparsed_tags->count && !(isspace(*unparsed_tags->data) || *unparsed_tags->data == ',')) {
         sv_chop_left(unparsed_tags, 1);

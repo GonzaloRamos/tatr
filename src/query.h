@@ -17,7 +17,9 @@
 
 #include "task.h"
 
-String_View chop_next_query_token(String_View *src);
+bool chop_next_query_token(String_View *src, String_View *token);
+
+// TASK(20261015-203224): all the op names related to the query language should change their names from `op` to `qop` similarly to update ops being `uop`
 
 typedef enum {
     OP_ANY,
@@ -113,5 +115,7 @@ typedef enum {
 } Task_Match_Result;
 
 Task_Match_Result task_matches_query(String_View original_src, Task task, Query query, Stack *stack);
+
+void report_compile_query_diagnostic(String_View original_src, String_View src, const char *format, ...) NOB_PRINTF_FORMAT(3, 4);
 
 #endif // QUERY_H_

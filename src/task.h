@@ -40,7 +40,7 @@ typedef struct {
     String_View task_md_content;
 } Task;
 
-void print_task_report(const char *rel_path, Task *task);
+void print_task_report(const char *rel_path, Task *task, String_View updated);
 void print_task_tags_update_report(const char *rel_path, int tags_property_line, Task task, String_View old_unparsed_tags);
 void append_task_md_content(String_Builder *sb, Task task);
 void render_task_md(Task task, String_Builder *sb, int *tags_property_line);
