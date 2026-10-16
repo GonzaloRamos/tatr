@@ -155,16 +155,16 @@ bool test_ls_query_negation_of_complex_expression_in_parens(Test_Runner *r)
             "    ]\n"
             "\n"
             "QUERY OPS:\n"
-            "    OP_TAGGED\n"
-            "    OP_TAG bug\n"
-            "    OP_TAG test\n"
-            "    OP_AND\n"
-            "    OP_TAG foo\n"
-            "    OP_AND\n"
-            "    OP_TAG bar\n"
-            "    OP_AND\n"
-            "    OP_OR\n"
-            "    OP_NOT\n"),
+            "    QOP_TAGGED\n"
+            "    QOP_TAG bug\n"
+            "    QOP_TAG test\n"
+            "    QOP_AND\n"
+            "    QOP_TAG foo\n"
+            "    QOP_AND\n"
+            "    QOP_TAG bar\n"
+            "    QOP_AND\n"
+            "    QOP_OR\n"
+            "    QOP_NOT\n"),
         sb_to_sv(r->sb_stdout))) return false;
     if (!assert_test_output("STDERR", (String_View){0}, sb_to_sv(r->sb_stderr))) return false;
     nob_log(INFO, "OK");
@@ -190,12 +190,12 @@ bool test_ls_query_not_stuck_to_open_paren(Test_Runner *r)
             "    :query\n"
             "\n"
             "QUERY OPS:\n"
-            "    OP_TAG bug\n"
-            "    OP_TAG test\n"
-            "    OP_AND\n"
-            "    OP_NOT\n"
-            "    OP_TAG query\n"
-            "    OP_AND\n"),
+            "    QOP_TAG bug\n"
+            "    QOP_TAG test\n"
+            "    QOP_AND\n"
+            "    QOP_NOT\n"
+            "    QOP_TAG query\n"
+            "    QOP_AND\n"),
         sb_to_sv(r->sb_stdout))) return false;
     if (!assert_test_output("STDERR", (String_View){0}, sb_to_sv(r->sb_stderr))) return false;
     nob_log(INFO, "OK");
@@ -239,9 +239,9 @@ bool test_ls_query_priority_above_20(Test_Runner *r)
             "    20\n"
             "\n"
             "QUERY OPS:\n"
-            "    OP_PRIORITY\n"
-            "    OP_INTEGER 20\n"
-            "    OP_GT\n"),
+            "    QOP_PRIORITY\n"
+            "    QOP_INTEGER 20\n"
+            "    QOP_GT\n"),
         sb_to_sv(r->sb_stdout))) return false;
     if (!assert_test_output(
         "STDERR",

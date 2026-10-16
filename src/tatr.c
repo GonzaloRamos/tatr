@@ -203,10 +203,10 @@ bool tag_run(Command *self, const char *program_name, int argc, char **argv)
             if (sv_eq(status, SVLIT("CLOSED"))) continue;
         }
         switch (task_matches_query(original_src, *task, query, &stack)) {
-        case TMR_MATCHED:    break;
-        case TMR_MISMATCHED: continue;
-        case TMR_ERROR:      return false;
-        default:             UNREACHABLE("Task_Match_Result");
+        case QUERY_MATCHED:    break;
+        case QUERY_MISMATCHED: continue;
+        case QUERY_ERROR:      return false;
+        default:               UNREACHABLE("Task_Match_Result");
         }
 
         String_Builder old_unparsed_tags = {0};
@@ -297,10 +297,10 @@ bool untag_run(Command *self, const char *program_name, int argc, char **argv)
             if (sv_eq(status, SVLIT("CLOSED"))) continue;
         }
         switch (task_matches_query(original_src, *task, query, &stack)) {
-        case TMR_MATCHED:    break;
-        case TMR_MISMATCHED: continue;
-        case TMR_ERROR:      return false;
-        default:             UNREACHABLE("Task_Match_Result");
+        case QUERY_MATCHED:    break;
+        case QUERY_MISMATCHED: continue;
+        case QUERY_ERROR:      return false;
+        default:               UNREACHABLE("Task_Match_Result");
         }
 
         String_Builder old_unparsed_tags = {0};
@@ -410,9 +410,9 @@ bool ls_run(Command *self, const char *program_name, int argc, char **argv)
         }
         printf("\n");
         printf("QUERY OPS:\n");
-        da_foreach(Op, op, &query) {
+        da_foreach(QOp, op, &query) {
             printf("    ");
-            print_op(*op);
+            print_qop(*op);
         }
         if (update.count) {
             printf("\n");
@@ -465,9 +465,9 @@ bool ls_run(Command *self, const char *program_name, int argc, char **argv)
             if (sv_eq(status, SVLIT("CLOSED"))) continue;
         }
         switch (task_matches_query(original_query_src, *task, query, &stack)) {
-        case TMR_MATCHED:    break;
-        case TMR_MISMATCHED: continue;
-        case TMR_ERROR:      return false;
+        case QUERY_MATCHED:    break;
+        case QUERY_MISMATCHED: continue;
+        case QUERY_ERROR:      return false;
         default:             UNREACHABLE("Task_Match_Result");
         }
 
