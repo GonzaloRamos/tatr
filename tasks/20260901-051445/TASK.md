@@ -2,6 +2,6 @@
 
 - STATUS: OPEN
 - PRIORITY: 100
-- TAGS:
+- TAGS: scope
 
 Maybe with something like `+` at the end of the hash
