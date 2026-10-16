@@ -1,4 +1,4 @@
-# Invalid tasks are filter out when `tatr-ls` is called with non-default query
+# Invalid tasks are filtered out when `tatr-ls` is called with non-default query
 
 - STATUS: OPEN
 - PRIORITY: 100

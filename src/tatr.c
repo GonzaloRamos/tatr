@@ -88,21 +88,36 @@ typedef struct Command Command;
 
 struct Command {
     const char *name;
-    const char *description;
+    const char *short_description;
+    const char *extra_description;
     const char *signature;
     bool (*run)(Command *self, const char *program_name, int argc, char **argv);
 };
 
-void print_command_usage(Command *command, const char *program_name, void *c)
+void print_command_usage(FILE *sink, Command *command, const char *program_name, void *c)
 {
+    fprintf(sink, "Usage:\n");
+    fprintf(sink, "    %s %s", program_name, command->name);
     if (command->signature) {
-        fprintf(stderr, "Usage: %s %s %s\n", program_name, command->name, command->signature);
-    } else {
-        fprintf(stderr, "Usage: %s %s\n", program_name, command->name);
+        fprintf(sink, " %s", command->signature);
     }
+    fprintf(sink, "\n");
+    fprintf(sink, "\n");
+
+    if (command->short_description) {
+        fprintf(sink, "Description:\n");
+        fprintf(sink, "    %s", command->short_description);
+        if (command->extra_description) {
+            fprintf(sink, " %s", command->extra_description);
+        }
+        fprintf(sink, "\n");
+        fprintf(sink, "\n");
+    }
+
     if (c) {
-        fprintf(stderr, "OPTIONS:\n");
-        flag_c_print_options(c, stderr);
+        fprintf(sink, "OPTIONS:\n");
+        flag_c_print_options(c, sink);
+        fprintf(sink, "\n");
     }
 }
 
@@ -119,13 +134,13 @@ bool init_run(Command *self, const char *program_name, int argc, char **argv)
 #endif // TASKS_README_MD
 
     if (!flag_c_parse(c, argc, argv)) {
-        print_command_usage(self, program_name, c);
+        print_command_usage(stderr, self, program_name, c);
         flag_c_print_error(c, stderr);
         return false;
     }
 
     if (help) {
-        print_command_usage(self, program_name, c);
+        print_command_usage(stdout, self, program_name, c);
         return true;
     }
 
@@ -158,7 +173,7 @@ bool tag_run(Command *self, const char *program_name, int argc, char **argv)
     flag_c_bool_var(c, &help, "help", false, "Print this help message");
 
     if (!flag_c_parse(c, argc, argv)) {
-        print_command_usage(self, program_name, c);
+        print_command_usage(stderr, self, program_name, c);
         flag_c_print_error(c, stderr);
         return false;
     }
@@ -167,7 +182,7 @@ bool tag_run(Command *self, const char *program_name, int argc, char **argv)
     argv = flag_c_rest_argv(c);
 
     if (help) {
-        print_command_usage(self, program_name, c);
+        print_command_usage(stdout, self, program_name, c);
         return true;
     }
 
@@ -252,7 +267,7 @@ bool untag_run(Command *self, const char *program_name, int argc, char **argv)
     flag_c_bool_var(c, &help, "help", false, "Print this help message");
 
     if (!flag_c_parse(c, argc, argv)) {
-        print_command_usage(self, program_name, c);
+        print_command_usage(stderr, self, program_name, c);
         flag_c_print_error(c, stderr);
         return false;
     }
@@ -261,7 +276,7 @@ bool untag_run(Command *self, const char *program_name, int argc, char **argv)
     argv = flag_c_rest_argv(c);
 
     if (help) {
-        print_command_usage(self, program_name, c);
+        print_command_usage(stdout, self, program_name, c);
         return true;
     }
 
@@ -359,7 +374,7 @@ bool ls_run(Command *self, const char *program_name, int argc, char **argv)
     flag_c_bool_var(c, &help, "help", false, "Print this help message");
 
     if (!flag_c_parse(c, argc, argv)) {
-        print_command_usage(self, program_name, c);
+        print_command_usage(stderr, self, program_name, c);
         flag_c_print_error(c, stderr);
         return false;
     }
@@ -368,7 +383,7 @@ bool ls_run(Command *self, const char *program_name, int argc, char **argv)
     argv = flag_c_rest_argv(c);
 
     if (help) {
-        print_command_usage(self, program_name, c);
+        print_command_usage(stdout, self, program_name, c);
         return true;
     }
 
@@ -594,7 +609,7 @@ bool todo_run(Command *self, const char *program_name, int argc, char **argv)
     bool use_color = isatty(STDOUT_FILENO);
 
     if (!flag_c_parse(c, argc, argv)) {
-        print_command_usage(self, program_name, c);
+        print_command_usage(stderr, self, program_name, c);
         flag_c_print_error(c, stderr);
         return false;
     }
@@ -603,12 +618,12 @@ bool todo_run(Command *self, const char *program_name, int argc, char **argv)
     argv = flag_c_rest_argv(c);
 
     if (help) {
-        print_command_usage(self, program_name, c);
+        print_command_usage(stdout, self, program_name, c);
         return true;
     }
 
     if (argc <= 0) {
-        print_command_usage(self, program_name, c);
+        print_command_usage(stderr, self, program_name, c);
         fprintf(stderr, "ERROR: no files were provided\n");
         return false;
     }
@@ -714,7 +729,7 @@ bool new_run(Command *self, const char *program_name, int argc, char **argv)
     String_Builder sb_title = {0};
 
     if (!flag_c_parse(c, argc, argv)) {
-        print_command_usage(self, program_name, c);
+        print_command_usage(stderr, self, program_name, c);
         flag_c_print_error(c, stderr);
         return false;
     }
@@ -728,7 +743,7 @@ bool new_run(Command *self, const char *program_name, int argc, char **argv)
     }
 
     if (help) {
-        print_command_usage(self, program_name, c);
+        print_command_usage(stdout, self, program_name, c);
         return true;
     }
 
@@ -756,10 +771,24 @@ bool new_run(Command *self, const char *program_name, int argc, char **argv)
 
 bool id_run(Command *self, const char *program_name, int argc, char **argv)
 {
-    UNUSED(self);
-    UNUSED(program_name);
-    UNUSED(argc);
-    UNUSED(argv);
+    bool help = false;
+    void *c = flag_c_new(program_name);
+    flag_c_bool_var(c, &help, "help", false, "Print this help message");
+
+    if (!flag_c_parse(c, argc, argv)) {
+        print_command_usage(stderr, self, program_name, c);
+        flag_c_print_error(c, stderr);
+        return false;
+    }
+
+    argc = flag_c_rest_argc(c);
+    argv = flag_c_rest_argv(c);
+
+    if (help) {
+        print_command_usage(stdout, self, program_name, c);
+        return true;
+    }
+
     Path dir_path = {0};
     Path cwd_path = {0};
     Path rel_path = {0};
@@ -788,7 +817,7 @@ bool find_run(Command *self, const char *program_name, int argc, char **argv)
 
     while (argc > 0) {
         if (!flag_c_parse(c, argc, argv)) {
-            print_command_usage(self, program_name, c);
+            print_command_usage(stderr, self, program_name, c);
             flag_c_print_error(c, stderr);
             return false;
         }
@@ -798,14 +827,14 @@ bool find_run(Command *self, const char *program_name, int argc, char **argv)
 
         if (argc > 0) {
             if (huid != NULL) {
-                print_command_usage(self, program_name, c);
+                print_command_usage(stderr, self, program_name, c);
                 fprintf(stderr, "ERROR: Several HUIDs is not supported\n");
                 return false;
             }
 
             huid = shift(argv, argc);
             if (!is_valid_huid(huid)) {
-                print_command_usage(self, program_name, c);
+                print_command_usage(stderr, self, program_name, c);
                 fprintf(stderr, "ERROR: `%s` is not a valid HUID. Valid HUID matches regexp %s\n", huid, HUID_REGEXP_FOR_USER_REPORT_PURPOSES);
                 return false;
             }
@@ -813,12 +842,12 @@ bool find_run(Command *self, const char *program_name, int argc, char **argv)
     }
 
     if (help) {
-        print_command_usage(self, program_name, c);
+        print_command_usage(stdout, self, program_name, c);
         return true;
     }
 
     if (huid == NULL) {
-        print_command_usage(self, program_name, c);
+        print_command_usage(stderr, self, program_name, c);
         fprintf(stderr, "ERROR: No HUID was provided\n");
         return false;
     }
@@ -861,7 +890,7 @@ bool ref_run(Command *self, const char *program_name, int argc, char **argv)
     flag_c_bool_var(c, &help, "help", false, "Print this help message");
 
     if (!flag_c_parse(c, argc, argv)) {
-        print_command_usage(self, program_name, c);
+        print_command_usage(stderr, self, program_name, c);
         flag_c_print_error(c, stderr);
         return false;
     }
@@ -870,7 +899,7 @@ bool ref_run(Command *self, const char *program_name, int argc, char **argv)
 
     while (argc > 0) {
         if (!flag_c_parse(c, argc, argv)) {
-            print_command_usage(self, program_name, c);
+            print_command_usage(stderr, self, program_name, c);
             flag_c_print_error(c, stderr);
             return false;
         }
@@ -880,14 +909,14 @@ bool ref_run(Command *self, const char *program_name, int argc, char **argv)
 
         if (argc > 0) {
             if (huid != NULL) {
-                print_command_usage(self, program_name, c);
+                print_command_usage(stderr, self, program_name, c);
                 fprintf(stderr, "ERROR: Several HUIDs is not supported\n");
                 return false;
             }
 
             huid = shift(argv, argc);
             if (!is_valid_huid(huid)) {
-                print_command_usage(self, program_name, c);
+                print_command_usage(stderr, self, program_name, c);
                 fprintf(stderr, "ERROR: `%s` is not a valid HUID. Valid HUID matches regexp %s\n", huid, HUID_REGEXP_FOR_USER_REPORT_PURPOSES);
                 return false;
             }
@@ -895,7 +924,7 @@ bool ref_run(Command *self, const char *program_name, int argc, char **argv)
     }
 
     if (help) {
-        print_command_usage(self, program_name, c);
+        print_command_usage(stdout, self, program_name, c);
         return true;
     }
 
@@ -931,13 +960,13 @@ bool graph_run(Command *self, const char *program_name, int argc, char **argv)
     flag_c_bool_var(c, &help, "help", false, "Print this help message");
 
     if (!flag_c_parse(c, argc, argv)) {
-        print_command_usage(self, program_name, c);
+        print_command_usage(stderr, self, program_name, c);
         flag_c_print_error(c, stderr);
         return false;
     }
 
     if (help) {
-        print_command_usage(self, program_name, c);
+        print_command_usage(stdout, self, program_name, c);
         return true;
     }
 
@@ -1026,13 +1055,13 @@ bool summary_run(Command *self, const char *program_name, int argc, char **argv)
     flag_c_bool_var(c, &help, "help", false, "Print this help message");
 
     if (!flag_c_parse(c, argc, argv)) {
-        print_command_usage(self, program_name, c);
+        print_command_usage(stderr, self, program_name, c);
         flag_c_print_error(c, stderr);
         return false;
     }
 
     if (help) {
-        print_command_usage(self, program_name, c);
+        print_command_usage(stdout, self, program_name, c);
         return true;
     }
 
@@ -1140,10 +1169,24 @@ bool help_run(Command *self, const char *program_name, int argc, char **argv);
 
 bool version_run(Command *self, const char *program_name, int argc, char **argv)
 {
-    UNUSED(self);
-    UNUSED(program_name);
-    UNUSED(argc);
-    UNUSED(argv);
+    bool help = false;
+    void *c = flag_c_new(program_name);
+    flag_c_bool_var(c, &help, "help", false, "Print this help message");
+
+    if (!flag_c_parse(c, argc, argv)) {
+        print_command_usage(stderr, self, program_name, c);
+        flag_c_print_error(c, stderr);
+        return false;
+    }
+
+    argc = flag_c_rest_argc(c);
+    argv = flag_c_rest_argv(c);
+
+    if (help) {
+        print_command_usage(stdout, self, program_name, c);
+        return true;
+    }
+
 #ifdef GIT_HASH
     printf("tatr commit %s\n", GIT_HASH);
 #else
@@ -1158,84 +1201,94 @@ bool version_run(Command *self, const char *program_name, int argc, char **argv)
     return true;
 }
 
+// IMPORTANT! Every commands must follow a convention where if you provide `-help` it should call print_command_usage().
+// This is important because `tatr help <COMMAND>` is a syntax sugar for `tatr <COMMAND> -help` and if the commands
+// don't follow this convention `tatr-help` will not work properly.
 Command commands[] = {
     {
         .name = "init",
-        .description = "Create tasks/ directory in the current working directory if it doesn't exist yet",
+        .signature = "[OPTIONS]",
+        .short_description = "Create tasks/ directory in the current working directory if it doesn't exist yet.",
         .run = init_run,
     },
     {
         .name = "ls",
         .signature = "[OPTIONS] [QUERY...]",
-        .description = "List the tasks",
+        .short_description = "List and update the tasks.",
         .run = ls_run,
     },
     {
         .name = "new",
         .signature = "[OPTIONS] [TITLE...]",
-        .description = "Create a new task",
+        .short_description = "Create a new task.",
         .run = new_run,
     },
     {
         .name = "todo",
         .signature = "[OPTIONS] <FILE...>",
-        .description = "Create tasks from all the TODOs in the provided files",
+        .short_description = "Create tasks from all the TODOs in the provided files.",
         .run = todo_run,
     },
     {
         .name = "summary",
         .signature = "[OPTIONS]",
-        .description = "Print the summary of the tasks",
+        .short_description = "Print the summary of the tasks.",
         .run = summary_run,
     },
     {
         .name = "find",
-        .signature = "<HUID> [OPTIONS]",
-        .description = "Find the task with a given HUID",
+        .signature = "[OPTIONS] <HUID>",
+        .short_description = "Find the task with a given HUID.",
         .run = find_run,
     },
     {
         .name = "id",
-        .description = "Print the id of the current task folder to stdout. On Linux you can do something like `tatr id | xclip` with this.",
+        .signature = "[OPTIONS]",
+        .short_description = "Print the id of the current task folder to stdout.",
+        .extra_description = "On Linux you can do something like `tatr id | xclip` with this.",
         .run = id_run,
     },
     {
         .name = "ref",
-        .signature = "[HUID]",
-        .description = "Finds referers of the task. Basically greps the Task ID over entirety of the repo. If ran inside of a task folder automatically picks up the ID of that task.",
+        .signature = "[OPTIONS] [HUID]",
+        .short_description = "Finds referers of the task.",
+        .extra_description = "Basically greps the Task ID over entirety of the repo. If ran inside of a task folder automatically picks up the ID of that task.",
         .run = ref_run,
     },
     {
         .name = "graph",
-        .description = "Generate graph of tasks cross-referring to each other. This command is largely useless right now.",
+        .signature = "[OPTIONS]",
+        .short_description = "Generate graph of tasks cross-referring to each other.",
+        .extra_description = "This command is largely useless right now.",
         .run = graph_run,
     },
     {
         .name = "tag",
-        .description = "Tag all the tasks filtered by a query",
+        .short_description = "Tag all the tasks filtered by a query.",
         .signature = "[OPTIONS] <QUERY>",
         .run = tag_run,
     },
     {
         .name = "untag",
-        .description = "Untag all the tasks filtered by a query",
+        .short_description = "Untag all the tasks filtered by a query.",
         .signature = "[OPTIONS] <QUERY>",
         .run = untag_run,
     },
     {
         .name = "help",
-        .signature = "[OPTIONS]",
-        .description = "Print this help message",
+        .signature = "[OPTIONS] [COMMAND]",
+        .short_description = "Print this help message.",
         .run = help_run,
     },
     {
         .name = "version",
-        .description = "Print the current version and date of the build",
+        .signature = "[OPTIONS]",
+        .short_description = "Print the current version and date of the build.",
         .run =  version_run,
     },
 };
 
-void print_available_commands(FILE *sink)
+void print_available_commands(FILE *sink, const char *program_name)
 {
     fprintf(sink, "Available commands:\n");
     int max_width = 0;
@@ -1244,19 +1297,54 @@ void print_available_commands(FILE *sink)
         if (width > max_width) max_width = width;
     }
     for (size_t i = 0; i < ARRAY_LEN(commands); ++i) {
-        fprintf(sink, "    %-*s - %s\n", max_width, commands[i].name, commands[i].description);
+        fprintf(sink, "    %-*s - %s\n", max_width, commands[i].name, commands[i].short_description);
     }
+    fprintf(sink, "\n");
+    fprintf(sink, "Use `%s <COMMAND> -help` to learn more about a command.\n", program_name);
 }
 
 bool help_run(Command *self, const char *program_name, int argc, char **argv)
 {
-    UNUSED(self);
-    UNUSED(argc);
-    UNUSED(argv);
-    printf("tatr - Task Tracker\n");
-    printf("Usage: %s <command> [OPTIONS]\n", program_name);
-    print_available_commands(stdout);
-    return true;
+    bool help = false;
+    void *c = flag_c_new(program_name);
+    flag_c_bool_var(c, &help, "help", false, "Print this help message");
+
+    if (!flag_c_parse(c, argc, argv)) {
+        print_command_usage(stderr, self, program_name, c);
+        flag_c_print_error(c, stderr);
+        return false;
+    }
+
+    argc = flag_c_rest_argc(c);
+    argv = flag_c_rest_argv(c);
+
+    if (help) {
+        print_command_usage(stdout, self, program_name, c);
+        return true;
+    }
+
+    if (argc <= 0) {
+        printf("tatr - Task Tracker\n");
+        printf("Usage: %s <command> [OPTIONS]\n", program_name);
+        printf("\n");
+        print_available_commands(stdout, program_name);
+        return true;
+    }
+
+    const char *command_name = shift(argv, argc);
+
+    for (size_t i = 0; i < ARRAY_LEN(commands); ++i) {
+        if (strcmp(command_name, commands[i].name) == 0) {
+            char *help_flag = "-help";
+            if (!commands[i].run(&commands[i], program_name, 1, &help_flag)) return false;
+            return true;
+        }
+    }
+
+    print_available_commands(stderr, program_name);
+    fprintf(stderr, "\n");
+    fprintf(stderr, "ERROR: Unknown command `%s`\n", command_name);
+    return false;
 }
 
 int main(int argc, char **argv)
@@ -1265,7 +1353,8 @@ int main(int argc, char **argv)
     const char *program_name = shift(argv, argc);
 
     if (argc <= 0) {
-        print_available_commands(stderr);
+        print_available_commands(stderr, program_name);
+        fprintf(stderr, "\n");
         fprintf(stderr, "ERROR: No command is provided\n");
         return 0;
     }
@@ -1279,7 +1368,8 @@ int main(int argc, char **argv)
         }
     }
 
-    print_available_commands(stderr);
+    print_available_commands(stderr, program_name);
+    fprintf(stderr, "\n");
     fprintf(stderr, "ERROR: Unknown command `%s`\n", command_name);
     return 1;
 #else // TASKS_TEST
