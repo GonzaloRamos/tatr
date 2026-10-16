@@ -55,7 +55,7 @@ bool find_tasks_database(Path *dir_path)
         }
         dir_path->count -= 2;
     }
-    nob_log(ERROR, "Could not find tasks/ folder");
+    fprintf(stderr, "ERROR: Could not find tasks/ folder\n");
     return_defer(false);
 defer:
     free(sb_path.items);
@@ -138,7 +138,7 @@ bool init_run(Command *self, const char *program_name, int argc, char **argv)
     const char *tasks_readme_md_file = "./tasks/README.md";
     if (!file_exists(tasks_readme_md_file) && !no_readme) {
         if (!write_entire_file(tasks_readme_md_file, TASKS_README_MD, ARRAY_LEN(TASKS_README_MD))) return false;
-        nob_log(INFO, "created %s", tasks_readme_md_file);
+        printf("Created %s\n", tasks_readme_md_file);
     }
 #endif // TASKS_README_MD
 
@@ -234,7 +234,7 @@ bool tag_run(Command *self, const char *program_name, int argc, char **argv)
         }
     }
 
-    nob_log(INFO, "%zu tasks updated", tasks_updated);
+    printf("%zu tasks updated\n", tasks_updated);
 
     return true;
 }
@@ -336,7 +336,7 @@ bool untag_run(Command *self, const char *program_name, int argc, char **argv)
         }
     }
 
-    nob_log(INFO, "%zu tasks updated", tasks_updated);
+    printf("%zu tasks updated\n", tasks_updated);
 
     return true;
 }
@@ -511,7 +511,7 @@ char *create_new_task(const char *dir_path, const char *id_suffix, String_View t
         if (file_exists(task_path)) {
             // We still hit an existing HUID even afte waiting for 1 second.
             // Something is wrong with the environment. Better report an error.
-            nob_log(ERROR, "%s already exists. You are probably creating tasks too fast, or your time is broken", id);
+            fprintf(stderr, "ERROR: %s already exists. You are probably creating tasks too fast, or your time is broken\n", id);
             return NULL;
         }
     }
@@ -799,14 +799,14 @@ bool find_run(Command *self, const char *program_name, int argc, char **argv)
         if (argc > 0) {
             if (huid != NULL) {
                 print_command_usage(self, program_name, c);
-                nob_log(ERROR, "Several HUIDs is not supported");
+                fprintf(stderr, "ERROR: Several HUIDs is not supported\n");
                 return false;
             }
 
             huid = shift(argv, argc);
             if (!is_valid_huid(huid)) {
                 print_command_usage(self, program_name, c);
-                nob_log(ERROR, "`%s` is not a valid HUID. Valid HUID matches regexp %s", huid, HUID_REGEXP_FOR_USER_REPORT_PURPOSES);
+                fprintf(stderr, "ERROR: `%s` is not a valid HUID. Valid HUID matches regexp %s\n", huid, HUID_REGEXP_FOR_USER_REPORT_PURPOSES);
                 return false;
             }
         }
@@ -819,7 +819,7 @@ bool find_run(Command *self, const char *program_name, int argc, char **argv)
 
     if (huid == NULL) {
         print_command_usage(self, program_name, c);
-        nob_log(ERROR, "No HUID was provided");
+        fprintf(stderr, "ERROR: No HUID was provided\n");
         return false;
     }
 
@@ -841,7 +841,7 @@ bool find_run(Command *self, const char *program_name, int argc, char **argv)
         }
     }
     if (!found) {
-        nob_log(ERROR, "No task with with HUID `%s` was found", huid);
+        fprintf(stderr, "ERROR: No task with with HUID `%s` was found\n", huid);
         return false;
     }
     return true;
@@ -881,14 +881,14 @@ bool ref_run(Command *self, const char *program_name, int argc, char **argv)
         if (argc > 0) {
             if (huid != NULL) {
                 print_command_usage(self, program_name, c);
-                nob_log(ERROR, "Several HUIDs is not supported");
+                fprintf(stderr, "ERROR: Several HUIDs is not supported\n");
                 return false;
             }
 
             huid = shift(argv, argc);
             if (!is_valid_huid(huid)) {
                 print_command_usage(self, program_name, c);
-                nob_log(ERROR, "`%s` is not a valid HUID. Valid HUID matches regexp %s", huid, HUID_REGEXP_FOR_USER_REPORT_PURPOSES);
+                fprintf(stderr, "ERROR: `%s` is not a valid HUID. Valid HUID matches regexp %s\n", huid, HUID_REGEXP_FOR_USER_REPORT_PURPOSES);
                 return false;
             }
         }
@@ -905,7 +905,7 @@ bool ref_run(Command *self, const char *program_name, int argc, char **argv)
 
     if (huid == NULL) {
         if (!(rel_path.count == 1 && sv_eq(da_last(&rel_path), SVLIT("..")))) {
-            nob_log(ERROR, "You are not inside any task folder. Pass the ID of a task as an argument to search for referers of that task.");
+            fprintf(stderr, "ERROR: You are not inside any task folder. Pass the ID of a task as an argument to search for referers of that task.\n");
             return false;
         }
         huid = temp_sv_to_cstr(da_last(&cwd_path));
@@ -988,7 +988,7 @@ bool graph_run(Command *self, const char *program_name, int argc, char **argv)
     const char *dot_path = "graph.dot";
     const char *out_path = temp_sprintf("graph.%s", format);
     if (!write_entire_file(dot_path, sb.items, sb.count)) return false;
-    nob_log(INFO, "Generated %s", dot_path);
+    printf("Generated %s\n", dot_path);
 
     Cmd cmd = {0};
     // cmd_append(&cmd, "dot");
@@ -1235,29 +1235,27 @@ Command commands[] = {
     },
 };
 
-void print_available_commands(Log_Level log_level)
+void print_available_commands(FILE *sink)
 {
-    nob_log(log_level, "Available commands:");
+    fprintf(sink, "Available commands:\n");
     int max_width = 0;
     for (size_t i = 0; i < ARRAY_LEN(commands); ++i) {
         int width = strlen(commands[i].name);
         if (width > max_width) max_width = width;
     }
     for (size_t i = 0; i < ARRAY_LEN(commands); ++i) {
-        nob_log(log_level, "    %-*s - %s", max_width, commands[i].name, commands[i].description);
+        fprintf(sink, "    %-*s - %s\n", max_width, commands[i].name, commands[i].description);
     }
 }
 
 bool help_run(Command *self, const char *program_name, int argc, char **argv)
 {
     UNUSED(self);
-    UNUSED(program_name);
     UNUSED(argc);
     UNUSED(argv);
-    // TASK(20260910-113917): Not sure why we use nob_log for reporting useful info to the user
-    nob_log(INFO, "tatr - Task Tracker");
-    nob_log(INFO, "Usage: %s <command> [OPTIONS]", program_name);
-    print_available_commands(INFO);
+    printf("tatr - Task Tracker\n");
+    printf("Usage: %s <command> [OPTIONS]\n", program_name);
+    print_available_commands(stdout);
     return true;
 }
 
@@ -1267,8 +1265,8 @@ int main(int argc, char **argv)
     const char *program_name = shift(argv, argc);
 
     if (argc <= 0) {
-        print_available_commands(ERROR);
-        nob_log(ERROR, "No command is provided");
+        print_available_commands(stderr);
+        fprintf(stderr, "ERROR: No command is provided\n");
         return 0;
     }
 
@@ -1281,8 +1279,8 @@ int main(int argc, char **argv)
         }
     }
 
-    print_available_commands(ERROR);
-    nob_log(ERROR, "Unknown command `%s`", command_name);
+    print_available_commands(stderr);
+    fprintf(stderr, "ERROR: Unknown command `%s`\n", command_name);
     return 1;
 #else // TASKS_TEST
     UNUSED(argc);

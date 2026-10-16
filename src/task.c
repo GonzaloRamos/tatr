@@ -76,7 +76,7 @@ bool load_tasks(Tasks *tasks, const char *dir_path)
         File_Type type = get_file_type(task_path);
         if (type < 0) return_defer(false);
         if (type != FILE_DIRECTORY) {
-            nob_log(ERROR, "%s is not a directory", id);
+            fprintf(stderr, "ERROR: %s is not a directory\n", id);
             return_defer(false);
         }
         // This String_Builder becomes owned by Task.task_md_content.
