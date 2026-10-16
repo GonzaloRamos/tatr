@@ -1,6 +1,6 @@
 # Crash during `tatr-new`
 
-- STATUS: OPEN
+- STATUS: CLOSED
 - PRIORITY: 200
 - TAGS: bug
 
@@ -24,5 +24,16 @@ SUMMARY: MemorySanitizer: SEGV /home/rexim/Programming/tsoding/tatr/src/task.c:2
 $ tatr version
 tatr commit 7d5934f
 Build time: Sun, 20 Sep 2026 16:20:23 +07
+Compiler: clang version 18.1.8
+```
+
+---
+
+Can't reproduce this in the current version:
+
+```console
+$ tatr version
+tatr commit f125408
+Build time: Fri, 16 Oct 2026 07:16:42 +07
 Compiler: clang version 18.1.8
 ```
