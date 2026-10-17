@@ -548,30 +548,63 @@ defer:
     return result;
 }
 
-bool make_build_h(Compiler compiler)
+bool append_git_hash_to_build_h(String_Builder *sb_build_h)
 {
-    Cmd cmd = {0};
-    String_Builder sb_build_h = {0};
-    sb_appendf(&sb_build_h, "#ifndef BUILD_H_\n");
-    sb_appendf(&sb_build_h, "#define BUILD_H_\n");
+    bool result = true;
 
-    // TASK(20260901-051445): If git state is dirty the baked git hash should indicate that
+    Cmd cmd = {0};
+    String_Builder git_status_sb = {0};
+
+    cmd_append(&cmd, "git");
+    cmd_append(&cmd, "status");
+    cmd_append(&cmd, "--porcelain");
+    if (!cmd_run(&cmd, .stdout_path = BUILD_FOLDER"git_status.txt")) {
+        nob_log(WARNING, "git hash will not be included in `tatr-version`");
+        return_defer(true);
+    }
+
+    if (!read_entire_file(BUILD_FOLDER"git_status.txt", &git_status_sb)) return_defer(false);
+    String_View git_status_sv = sv_trim(sb_to_sv(git_status_sb));
+
     cmd_append(&cmd, "git");
     cmd_append(&cmd, "rev-parse");
     cmd_append(&cmd, "--short");
     cmd_append(&cmd, "HEAD");
-    if (cmd_run(&cmd, .stdout_path = BUILD_FOLDER"git_hash.txt")) {
-        sb_appendf(&sb_build_h, "#define GIT_HASH \"");
-        if (!read_entire_file(BUILD_FOLDER"git_hash.txt", &sb_build_h)) return false;
-        while (sb_build_h.count > 0 && isspace(da_last(&sb_build_h))) {
-            UNUSED(da_pop(&sb_build_h));
-        }
-        sb_appendf(&sb_build_h, "\"\n");
-    } else {
+    if (!cmd_run(&cmd, .stdout_path = BUILD_FOLDER"git_hash.txt")) {
         nob_log(WARNING, "git hash will not be included in `tatr-version`");
+        return_defer(true);
     }
 
+    sb_appendf(sb_build_h, "#define GIT_HASH \"");
+    if (!read_entire_file(BUILD_FOLDER"git_hash.txt", sb_build_h)) return_defer(false);
+    while (sb_build_h->count > 0 && isspace(da_last(sb_build_h))) {
+        UNUSED(da_pop(sb_build_h));
+    }
+    if (git_status_sv.count > 0) {
+        sb_append(sb_build_h, '+');
+    }
+    sb_appendf(sb_build_h, "\"\n");
+
+defer:
+    free(cmd.items);
+    free(git_status_sb.items);
+    return result;
+}
+
+bool make_build_h(Compiler compiler)
+{
+    bool result = true;
+
+    Cmd cmd = {0};
+    String_Builder sb_build_h = {0};
     String_Builder sb_compiler_version_txt = {0};
+    String_Builder sb_tasks_readme_md = {0};
+
+    sb_appendf(&sb_build_h, "#ifndef BUILD_H_\n");
+    sb_appendf(&sb_build_h, "#define BUILD_H_\n");
+
+    if (!append_git_hash_to_build_h(&sb_build_h)) return_defer(false);
+
     static_assert(__compiler_count == 4, "Amount of compilers have changed");
     switch (compiler) {
     case CC:    cmd_append(&cmd, "cc",    "--version"); break;
@@ -583,7 +616,7 @@ bool make_build_h(Compiler compiler)
         UNREACHABLE("Compiler");
     }
     if (cmd_run(&cmd, .stdout_path = BUILD_FOLDER"compiler-version.txt")) {
-        if (!read_entire_file(BUILD_FOLDER"compiler-version.txt", &sb_compiler_version_txt)) return false;
+        if (!read_entire_file(BUILD_FOLDER"compiler-version.txt", &sb_compiler_version_txt)) return_defer(false);
         String_View compiler_version_txt = sb_to_sv(sb_compiler_version_txt);
         String_View compiler_version = sv_chop_by_delim(&compiler_version_txt, '\n');
         sb_appendf(&sb_build_h, "#define COMPILER_VERSION \""SV_Fmt"\"\n", SV_Arg(compiler_version));
@@ -595,8 +628,7 @@ bool make_build_h(Compiler compiler)
 
     const char *tasks_readme_md_file = "tasks/README.md";
     if (file_exists(tasks_readme_md_file)) {
-        String_Builder sb_tasks_readme_md = {0};
-        if (!read_entire_file(tasks_readme_md_file, &sb_tasks_readme_md)) return false;
+        if (!read_entire_file(tasks_readme_md_file, &sb_tasks_readme_md)) return_defer(false);
         sb_appendf(&sb_build_h, "unsigned char tasks_readme_md[] = {\n");
         for (size_t i = 0; i < sb_tasks_readme_md.count;) {
             sb_appendf(&sb_build_h, "    ");
@@ -613,8 +645,14 @@ bool make_build_h(Compiler compiler)
 
     sb_appendf(&sb_build_h, "#endif // BUILD_H_\n");
 
-    if (!write_entire_file(BUILD_FOLDER"build.h", sb_build_h.items, sb_build_h.count)) return false;
+    if (!write_entire_file(BUILD_FOLDER"build.h", sb_build_h.items, sb_build_h.count)) return_defer(false);
     nob_log(INFO, "Generated "BUILD_FOLDER"build.h");
+
+defer:
+    free(cmd.items);
+    free(sb_build_h.items);
+    free(sb_compiler_version_txt.items);
+    free(sb_tasks_readme_md.items);
     return true;
 }
 
