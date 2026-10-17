@@ -1239,6 +1239,8 @@ Command commands[] = {
         .name = "find",
         .signature = "[OPTIONS] <HUID>",
         .short_description = "Find the task with a given HUID.",
+        .extra_description =
+            "Unlike `tatr ls <HUID>` this command finds the task regardless of whether it's closed or not.",
         .run = find_run,
     },
     {
