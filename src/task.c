@@ -100,16 +100,22 @@ bool load_tasks(Tasks *tasks, const char *dir_path)
         String_View *status = properties_get(&task.properties, SVLIT("STATUS"));
         if (status) {
             task.status = *status;
+        } else {
+            properties_put(&task.properties, SVLIT("STATUS"), SVNULL);
         }
 
         String_View *priority = properties_get(&task.properties, SVLIT("PRIORITY"));
         if (priority) {
             task.priority = atoi(temp_sv_to_cstr(*priority));
+        } else {
+            properties_put(&task.properties, SVLIT("PRIORITY"), SVNULL);
         }
 
         String_View *unparsed_tags = properties_get(&task.properties, SVLIT("TAGS"));
         if (unparsed_tags) {
             parse_tags(&task.parsed_tags, *unparsed_tags);
+        } else {
+            properties_put(&task.properties, SVLIT("TAGS"), SVNULL);
         }
 
         da_append(tasks, task);

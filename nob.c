@@ -17,6 +17,7 @@
 #include "./thirdparty/nob.h"
 #define FLAG_IMPLEMENTATION
 #include "./thirdparty/flag.h"
+#include "./src/huid.h"
 
 #define BUILD_FOLDER      "build/"
 #define SRC_FOLDER        "src/"
@@ -279,10 +280,11 @@ bool make_build_h(Compiler compiler);
 const char *get_current_date(void);
 bool test_tatr_new_sanity(Cmd *cmd);
 bool test_tatr_todo_sanity(Cmd *cmd);
+bool test_tatr_tag_task_without_tags_property(const char *file_loc, int line_loc, Cmd *cmd);
 
 int main(int argc, char **argv)
 {
-    GO_REBUILD_URSELF(argc, argv);
+    GO_REBUILD_URSELF_PLUS(argc, argv, "./src/huid.h", "./src/huid.c", "./thirdparty/nob.h", "./thirdparty/flag.h");
     Cmd cmd = {0};
 
     bool test = false;
@@ -348,6 +350,7 @@ int main(int argc, char **argv)
         if (!test_ls_query_priority_above_20(&r)) return 1;
         if (!test_tatr_new_sanity(&r.cmd)) return 1;
         if (!test_tatr_todo_sanity(&r.cmd)) return 1;
+        if (!test_tatr_tag_task_without_tags_property(__FILE__, __LINE__, &r.cmd)) return 1;
     }
 
     if (run) {
@@ -421,6 +424,50 @@ bool count_newlines_in_file(const char *file_path, size_t *newline_count)
 bool expect_newline_count_in_file(const char *file_loc, int line_loc, const char *file_path, size_t expected_newline_count)
 {
     return expect_needle_count_in_file(file_loc, line_loc, file_path, SVLIT("\n"),  expected_newline_count);
+}
+
+bool test_tatr_tag_task_without_tags_property(const char *file_loc, int line_loc, Cmd *cmd)
+{
+    bool result = true;
+    const char *saved_cwd = get_current_dir_temp();
+    String_Builder sb = {0};
+    size_t newlines = 0;
+
+    if (file_exists(BUILD_FOLDER"test/")) {
+        if (!delete_directory_recursively(BUILD_FOLDER"test/")) return_defer(false);
+    }
+
+    if (!mkdir_if_not_exists(BUILD_FOLDER"test/")) return_defer(false);
+
+    set_current_dir(BUILD_FOLDER"test/");
+
+    cmd_append(cmd, "../tatr", "init");
+    if (!cmd_run(cmd, .stdout_path = "stdout.txt")) return_defer(false);
+
+    const char *task_id = temp_new_huid(NULL);
+    if (!mkdir_if_not_exists(temp_sprintf("tasks/%s", task_id))) return_defer(false);
+    const char *task_md_path = temp_sprintf("tasks/%s/TASK.md", task_id);
+
+    sb_appendf(&sb, "# Test\n");
+    sb_appendf(&sb, "\n");
+    sb_appendf(&sb, "- PRIORITY: 69\n");
+    sb_appendf(&sb, "- STATUS: OPEN\n");
+    sb_appendf(&sb, "\n");
+    sb_appendf(&sb, "A task without TAGS property\n");
+    if (!write_entire_file(task_md_path, sb.items, sb.count)) return_defer(false);
+
+    cmd_append(cmd, "../tatr", "ls", "-update", "+aboba", "any");
+    if (!cmd_run(cmd, .stdout_path = "stdout.txt")) return_defer(false);
+
+    if (!expect_needle_count_in_file(__FILE__, __LINE__, task_md_path, SVLIT("aboba"), 1)) return_defer(false);
+
+defer:
+    set_current_dir(saved_cwd);
+    free(sb.items);
+    if (!result) {
+        fprintf(stderr, "%s:%d: TEST FAILED\n", file_loc, line_loc);
+    }
+    return result;
 }
 
 bool test_tatr_todo_sanity(Cmd *cmd)
@@ -602,3 +649,5 @@ const char *get_current_date(void)
     sb_append_null(&sb);
     return sb.items;
 }
+
+#include "./src/huid.c"
