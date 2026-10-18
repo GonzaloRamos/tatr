@@ -91,6 +91,7 @@ struct Command {
     const char *short_description;
     const char *extra_description;
     const char *signature;
+    bool deprecated;
     bool (*run)(Command *self, const char *program_name, int argc, char **argv);
 };
 
@@ -186,6 +187,11 @@ bool tag_run(Command *self, const char *program_name, int argc, char **argv)
         return true;
     }
 
+    if (tags_to_add.count == 0) {
+        fprintf(stderr, "ERROR: no tags are provided\n");
+        return false;
+    }
+
     if (argc <= 0) {
         fprintf(stderr, "ERROR: no query is provided\n");
         return false;
@@ -196,62 +202,20 @@ bool tag_run(Command *self, const char *program_name, int argc, char **argv)
         sb_append_cstr(&query_src, shift(argv, argc));
     }
 
-    String_View src = sv_trim(sb_to_sv(query_src));
-    String_View original_src = src;
-    Query query = {0};
-    if (!compile_query(original_src, &src, &query)) return false;
-
-    char *dir_path = find_relative_tasks_directory();
-    if (!dir_path) return false;
-
-    Tasks tasks = {0};
-    if (!load_tasks(&tasks, dir_path)) return false;
-
-    Stack stack = {0};
-
-    size_t tasks_updated = 0;
-    da_foreach(Task, task, &tasks) {
-        String_View status = task->status;
-        if (closed) {
-            if (!sv_eq(status, SVLIT("CLOSED"))) continue;
-        } else {
-            if (sv_eq(status, SVLIT("CLOSED"))) continue;
+    String_Builder alternative_command = {0};
+    sb_append_cstr(&alternative_command, program_name);
+    sb_append_cstr(&alternative_command, " ls -update ");
+    da_foreach(const char *, tag, &tags_to_add) {
+        if (tag != tags_to_add.items) {
+            sb_append(&alternative_command, ',');
         }
-        switch (task_matches_query(original_src, *task, query, &stack)) {
-        case QUERY_MATCHED:    break;
-        case QUERY_MISMATCHED: continue;
-        case QUERY_ERROR:      return false;
-        default:               UNREACHABLE("Task_Match_Result");
-        }
-
-        String_Builder old_unparsed_tags = {0};
-        unparse_tags(task->parsed_tags, &old_unparsed_tags);
-
-        bool updated = false;
-        for (size_t i = 0; i < tags_to_add.count; ++i) {
-            String_View tag = sv_from_cstr(tags_to_add.items[i]);
-            if (!parsed_tags_contains(task->parsed_tags, tag)) {
-                da_append(&task->parsed_tags, tag);
-                updated = true;
-            }
-        }
-
-        if (updated) {
-            String_Builder task_md_content = {0};
-            int tags_property_line = 0;
-            render_task_md(*task, &task_md_content, &tags_property_line);
-            const char *task_md_path = temp_sprintf("%s/%s/TASK.md", dir_path, task->id);
-            if (!write_entire_file(task_md_path, task_md_content.items, task_md_content.count)) return false;
-
-            print_task_tags_update_report(dir_path, tags_property_line, *task, sb_to_sv(old_unparsed_tags));
-
-            tasks_updated += 1;
-        }
+        sb_appendf(&alternative_command, "+%s", *tag);
     }
-
-    printf("%zu tasks updated\n", tasks_updated);
-
-    return true;
+    sb_append_cstr(&alternative_command, " ");
+    sb_append_sb(&alternative_command, query_src);
+    sb_append_null(&alternative_command);
+    fprintf(stderr, "ERROR: This command is deprecated! Please use `%s` instead!\n", alternative_command.items);
+    return false;
 }
 
 bool untag_run(Command *self, const char *program_name, int argc, char **argv)
@@ -285,75 +249,30 @@ bool untag_run(Command *self, const char *program_name, int argc, char **argv)
         return false;
     }
 
+    if (tags_to_remove.count == 0) {
+        fprintf(stderr, "ERROR: no tags are provided\n");
+        return false;
+    }
+
     while (argc > 0) {
         if (query_src.count > 0) sb_append(&query_src, ' ');
         sb_append_cstr(&query_src, shift(argv, argc));
     }
 
-    String_View src = sv_trim(sb_to_sv(query_src));
-    String_View original_src = src;
-    Query query = {0};
-    if (!compile_query(original_src, &src, &query)) return false;
-
-    char *dir_path = find_relative_tasks_directory();
-    if (!dir_path) return false;
-
-    Tasks tasks = {0};
-    if (!load_tasks(&tasks, dir_path)) return false;
-
-    Stack stack = {0};
-
-    size_t tasks_updated = 0;
-    da_foreach(Task, task, &tasks) {
-        String_View status = task->status;
-        if (closed) {
-            if (!sv_eq(status, SVLIT("CLOSED"))) continue;
-        } else {
-            if (sv_eq(status, SVLIT("CLOSED"))) continue;
+    String_Builder alternative_command = {0};
+    sb_append_cstr(&alternative_command, program_name);
+    sb_append_cstr(&alternative_command, " ls -update ");
+    da_foreach(const char *, tag, &tags_to_remove) {
+        if (tag != tags_to_remove.items) {
+            sb_append(&alternative_command, ',');
         }
-        switch (task_matches_query(original_src, *task, query, &stack)) {
-        case QUERY_MATCHED:    break;
-        case QUERY_MISMATCHED: continue;
-        case QUERY_ERROR:      return false;
-        default:               UNREACHABLE("Task_Match_Result");
-        }
-
-        String_Builder old_unparsed_tags = {0};
-        unparse_tags(task->parsed_tags, &old_unparsed_tags);
-
-        bool updated = false;
-        for (size_t i = 0; i < task->parsed_tags.count;) {
-            String_View tag = task->parsed_tags.items[i];
-            bool remove = false;
-            for (size_t j = 0; !remove && j < tags_to_remove.count; ++j) {
-                if (sv_eq(tag, sv_from_cstr(tags_to_remove.items[j]))) {
-                    remove = true;
-                }
-            }
-            if (remove) {
-                updated = true;
-                da_remove_unordered(&task->parsed_tags, i);
-            } else {
-                i += 1;
-            }
-        }
-
-        if (updated) {
-            String_Builder task_md_content = {0};
-            int tags_property_line = 0;
-            render_task_md(*task, &task_md_content, &tags_property_line);
-            const char *task_md_path = temp_sprintf("%s/%s/TASK.md", dir_path, task->id);
-            if (!write_entire_file(task_md_path, task_md_content.items, task_md_content.count)) return false;
-
-            print_task_tags_update_report(dir_path, tags_property_line, *task, sb_to_sv(old_unparsed_tags));
-
-            tasks_updated += 1;
-        }
+        sb_appendf(&alternative_command, "-%s", *tag);
     }
-
-    printf("%zu tasks updated\n", tasks_updated);
-
-    return true;
+    sb_append_cstr(&alternative_command, " ");
+    sb_append_sb(&alternative_command, query_src);
+    sb_append_null(&alternative_command);
+    fprintf(stderr, "ERROR: This command is deprecated! Please use `%s` instead!\n", alternative_command.items);
+    return false;
 }
 
 bool ls_run(Command *self, const char *program_name, int argc, char **argv)
@@ -1266,15 +1185,17 @@ Command commands[] = {
     },
     {
         .name = "tag",
-        .short_description = "Tag all the tasks filtered by a query.",
+        .short_description = "Tag all the tasks filtered by a query. DEPRECATED! Use `tatr ls -update +<tag> <query>` instead.",
         .signature = "[OPTIONS] <QUERY>",
         .run = tag_run,
+        .deprecated = true,
     },
     {
         .name = "untag",
-        .short_description = "Untag all the tasks filtered by a query.",
+        .short_description = "Untag all the tasks filtered by a query. DEPRECATED! Use `tatr ls -update -<tag> <query>` instead.",
         .signature = "[OPTIONS] <QUERY>",
         .run = untag_run,
+        .deprecated = true,
     },
     {
         .name = "help",
@@ -1290,25 +1211,37 @@ Command commands[] = {
     },
 };
 
-void print_available_commands(FILE *sink, const char *program_name)
+void print_available_commands(FILE *sink, const char *program_name, bool deprecated)
 {
-    fprintf(sink, "Available commands:\n");
     int max_width = 0;
     for (size_t i = 0; i < ARRAY_LEN(commands); ++i) {
         int width = strlen(commands[i].name);
         if (width > max_width) max_width = width;
     }
+
+    fprintf(sink, "Available commands:\n");
     for (size_t i = 0; i < ARRAY_LEN(commands); ++i) {
+        if (commands[i].deprecated) continue;
         fprintf(sink, "    %-*s - %s\n", max_width, commands[i].name, commands[i].short_description);
     }
     fprintf(sink, "\n");
+    if (deprecated) {
+        fprintf(sink, "Deprecated commands:\n");
+        for (size_t i = 0; i < ARRAY_LEN(commands); ++i) {
+            if (!commands[i].deprecated) continue;
+            fprintf(sink, "    %-*s - %s\n", max_width, commands[i].name, commands[i].short_description);
+        }
+        fprintf(sink, "\n");
+    }
     fprintf(sink, "Use `%s <COMMAND> -help` to learn more about a command.\n", program_name);
 }
 
 bool help_run(Command *self, const char *program_name, int argc, char **argv)
 {
     bool help = false;
+    bool deprecated = false;
     void *c = flag_c_new(program_name);
+    flag_c_bool_var(c, &deprecated, "d", false, "Print deprecated commands");
     flag_c_bool_var(c, &help, "help", false, "Print this help message");
 
     if (!flag_c_parse(c, argc, argv)) {
@@ -1329,7 +1262,7 @@ bool help_run(Command *self, const char *program_name, int argc, char **argv)
         printf("tatr - Task Tracker\n");
         printf("Usage: %s <command> [OPTIONS]\n", program_name);
         printf("\n");
-        print_available_commands(stdout, program_name);
+        print_available_commands(stdout, program_name, deprecated);
         return true;
     }
 
@@ -1343,7 +1276,7 @@ bool help_run(Command *self, const char *program_name, int argc, char **argv)
         }
     }
 
-    print_available_commands(stderr, program_name);
+    print_available_commands(stderr, program_name, deprecated);
     fprintf(stderr, "\n");
     fprintf(stderr, "ERROR: Unknown command `%s`\n", command_name);
     return false;
@@ -1355,7 +1288,7 @@ int main(int argc, char **argv)
     const char *program_name = shift(argv, argc);
 
     if (argc <= 0) {
-        print_available_commands(stderr, program_name);
+        print_available_commands(stderr, program_name, false);
         fprintf(stderr, "\n");
         fprintf(stderr, "ERROR: No command is provided\n");
         return 0;
@@ -1370,7 +1303,7 @@ int main(int argc, char **argv)
         }
     }
 
-    print_available_commands(stderr, program_name);
+    print_available_commands(stderr, program_name, false);
     fprintf(stderr, "\n");
     fprintf(stderr, "ERROR: Unknown command `%s`\n", command_name);
     return 1;

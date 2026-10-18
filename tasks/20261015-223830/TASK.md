@@ -1,8 +1,8 @@
 # Deprecate `tatr-tag` and `tatr-untag` commands
 
-- STATUS: OPEN
+- STATUS: CLOSED
 - PRIORITY: 110
-- TAGS: scope
+- TAGS:
 
 Derived from TASK(20261011-182715)
 
